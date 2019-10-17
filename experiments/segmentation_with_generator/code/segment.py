@@ -203,14 +203,14 @@ validation_generator = zip(x_val_generator, y_val_generator)
 #    ax2.imshow(mask_batch[i], cmap='gray')
 #    plt.show()
 
-img_batch, mask_batch = next(validation_generator)
-mask_batch = mask_batch.reshape(batch_size, 256, 256)
-for i in range(3):
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    fig.suptitle('Augmented image and mask')
-    ax1.imshow(img_batch[i])
-    ax2.imshow(mask_batch[i], cmap='gray')
-    plt.show()
+#img_batch, mask_batch = next(validation_generator)
+#mask_batch = mask_batch.reshape(batch_size, 256, 256)
+#for i in range(3):
+#    fig, (ax1, ax2) = plt.subplots(1, 2)
+#    fig.suptitle('Augmented image and mask')
+#    ax1.imshow(img_batch[i])
+#    ax2.imshow(mask_batch[i], cmap='gray')
+#    plt.show()
 
 # Callback functions
 # Create a model checkpoint after every epoch
