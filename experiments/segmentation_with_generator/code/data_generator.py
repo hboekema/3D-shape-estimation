@@ -1,13 +1,39 @@
+""" NOT USED - use the keras ImageDataGenerator instead """
+
 import os
 import cv2
 import numpy as np
 import keras
 
 
-class DataGenerator(keras.utils.Sequence):
+class TrainDataGenerator(keras.utils.Sequence, keras.preprocessing.image.ImageDataGenerator):
+    """ This class is designed to apply the ImageDataGenerator.flow_from_directory() function in a custom way """
+    def __init__(self, img_dir, mask_dir, batch_size=32, **kwargs):
+        # The keyword arguments should match those of the ImageDataGenerator class
+        super().__init__(**kwargs)
+
+        # Store image and mask directories
+        img_ids = os.listdir(img_dir)
+        mask_ids = os.listdir(mask_dir)
+
+        # Only use images which have a corresponding mask
+        self.ids = set(img_ids).intersection(set(mask_ids))
+
+        # Store the batch size to be used in training
+        self.batch_size = batch_size
+
+    def __len__(self):
+        """ Denotes the number of batches per epoch """
+        return int(np.ceil(len(self.ids) / self.batch_size))
+
+
+class DataGenerator(keras.utils.Sequence, keras.preprocessing.image.ImageDataGenerator):
     """ Generates data for Keras """
     def __init__(self, images_dir, masks_dir, batch_size=32, dim=(256, 256), n_channels=1,
-                 n_classes=1, shuffle=True, preprocessor=None, augmentations=None):
+                 n_classes=1, shuffle=True, preprocessor=None, augmentations=None, **kwargs):
+        # Call __init__ of super class
+        super().__init__(**kwargs)
+
         # Store image and mask directories
         self.img_ids = os.listdir(images_dir)
         self.mask_ids = os.listdir(masks_dir)
@@ -81,3 +107,5 @@ class DataGenerator(keras.utils.Sequence):
         y /= 255
 
         return X, y
+
+

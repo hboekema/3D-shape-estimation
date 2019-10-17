@@ -95,8 +95,7 @@ preds = model.predict(x_test)
 preds = preds.reshape(preds.shape[0], 256, 256)
 print(preds.shape)
 
-i = 0
-for pred in preds:
+for i, pred in enumerate(preds, 1):
     #plt.imshow(pred, cmap='gray')
     #plt.show()
     cv2.imwrite("img_pred_{}.png".format(i), pred)

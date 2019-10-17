@@ -1,0 +1,39 @@
+{
+  "ENV": {
+    "CUDA_VISIBLE_DEVICES": "0",
+    "CHANNEL_FORMAT": "channels_last",
+    "USE_MULTIPROCESSING" : true,
+    "WORKERS" : 6,
+    "LOG_PATH" : "../logs/",
+    "VISUALISATION_PATH" : "../training_visualisations/"
+  },
+
+  "DATA" : {
+    "SOURCE" : {"TRAINING_IMG" : "../../../data/train_img_subset/",
+      "TRAINING_MASKS" : "../../../data/train_labels_subset/",
+      "VALIDATION_IMG" : ".",
+      "VALIDATION_MASKS" : "",
+      "TEST_IMG" : "../../../data/test_img/",
+      "TEST_MASKS" : ""
+    },
+    "IMG_INFO" : {"INPUT_WH" : [256, 256], "N_CHANNELS" : 3},
+    "MASK_INFO" : {"INPUT_WH" : [256, 256], "N_CHANNELS" : 1, "N_CLASSES" : 1, "CLASSES" : ["Human"]},
+    "PREPROCESSING" : {},
+    "AUGMENTATIONS" : {"ROTATION" : 30, "TRANSLATION" : 20, "SHEAR" : 0.2}
+  },
+
+  "GENERATOR" : {
+    "BATCH_SIZE" : 16,
+    "SHUFFLE" : true
+  },
+
+  "MODEL" : {
+    "EPOCHS" : 1,
+    "STEPS_PER_EPOCH": 200,
+    "VALIDATION_STEPS": 80,
+    "ARCHITECTURE" : {"ENCODER" : "resnet34", "DECODER" : ""},
+    "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0, 1.0], "LOSSES" : ["binary_crossentropy", "jaccard_loss"]},
+    "METRICS" : ["IOU"]
+  }
+
+}

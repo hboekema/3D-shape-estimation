@@ -1,5 +1,9 @@
-# Data
+# Data and visualisations
 data/
+*_visualisations/
+
+# Models
+models/
 
 # IntelliJ files
 .idea/
