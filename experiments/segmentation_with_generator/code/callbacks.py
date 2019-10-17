@@ -11,7 +11,7 @@ from datetime import datetime
 class PredOnEpochEnd(tf.keras.callbacks.Callback):
     def __init__(self, log_path, x_train=None, x_val=None, x_test=None, pred_path="../"):
         # Open the log file
-        log_path = os.path.join(log_path, "losses_{}".format(datetime.now()))
+        log_path = os.path.join(log_path, "losses_{}.txt".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         self.epoch_log = open(log_path, mode='wt', buffering=1)
 
         # Store path for prediction visualisations

@@ -203,6 +203,14 @@ validation_generator = zip(x_val_generator, y_val_generator)
 #    ax2.imshow(mask_batch[i], cmap='gray')
 #    plt.show()
 
+img_batch, mask_batch = next(validation_generator)
+mask_batch = mask_batch.reshape(batch_size, 256, 256)
+for i in range(3):
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    fig.suptitle('Augmented image and mask')
+    ax1.imshow(img_batch[i])
+    ax2.imshow(mask_batch[i], cmap='gray')
+    plt.show()
 
 # Callback functions
 # Create a model checkpoint after every epoch
@@ -238,16 +246,16 @@ print("Fitting model...")
 model.fit_generator(
     generator=training_generator,
     epochs=params["MODEL"]["EPOCHS"],
-    steps_per_epoch=10,
+    steps_per_epoch=params["MODEL"]["STEPS_PER_EPOCH"],
     validation_data=validation_generator,
-    validation_steps=5,
+    validation_steps=params["MODEL"]["VALIDATION_STEPS"],
     callbacks=[PredOnEpochEnd(log_path, x_train=train_sample, x_test=test_sample, pred_path=pred_path),
                model_save_checkpoint],
     use_multiprocessing=params["ENV"]["USE_MULTIPROCESSING"]
 )
 
 # Save the final model's weights
-model.save("../models/model.l{}-{}.h5".format(model.loss, datetime.now()))
+model.save("../models/model-{}.h5".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
 print("Model fit. Predicting...")
 preds = model.predict(x_test)

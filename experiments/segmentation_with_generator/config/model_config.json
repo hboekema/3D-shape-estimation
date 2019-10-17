@@ -29,8 +29,8 @@
 
   "MODEL" : {
     "EPOCHS" : 1,
-    "STEPS_PER_EPOCH": 200,
-    "VALIDATION_STEPS": 80,
+    "STEPS_PER_EPOCH": 15,
+    "VALIDATION_STEPS": 8,
     "ARCHITECTURE" : {"ENCODER" : "resnet34", "DECODER" : ""},
     "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0, 1.0], "LOSSES" : ["binary_crossentropy", "jaccard_loss"]},
     "METRICS" : ["IOU"]
