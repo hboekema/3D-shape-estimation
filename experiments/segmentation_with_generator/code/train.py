@@ -12,13 +12,28 @@ import segmentation_models as sm
 from keras.callbacks import LambdaCallback, ModelCheckpoint
 from keras.preprocessing.image import ImageDataGenerator
 from matplotlib import pyplot as plt
+import argparse
 
 #from data_generator import DataGenerator
 from callbacks import PredOnEpochEnd
 
+# Parse the command-line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("config", help="Path to configuration file")
+parser.add_argument("--run_id", help="Identifier of this network pass")
+
+args = parser.parse_args()
+
 # Read in the configurations
-with open("../config/model_config.json", 'r') as file:
+with open(args.config, 'r') as file:
     params = json.load(file)
+
+# Set the ID of this training pass
+if args.run_id is not None:
+    run_id = args.run_id
+else:
+    # Use the current date and time as a run-id
+    run_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # Set number of GPUs to use
 os.environ["CUDA_VISIBLE_DEVICES"] = params["ENV"]["CUDA_VISIBLE_DEVICES"]
@@ -37,20 +52,22 @@ mask_n_channels = params["DATA"]["MASK_INFO"]["N_CHANNELS"]
 
 # Store the salient paths
 log_path = params["ENV"]["LOG_PATH"]
-pred_path = params["ENV"]["VISUALISATION_PATH"]
+train_pred_path = params["ENV"]["TRAINING_VIS_PATH"]
+test_pred_path = params["ENV"]["TEST_VIS_PATH"]
 
 # Store the batch size
 batch_size = params["GENERATOR"]["BATCH_SIZE"]
 
 # Read in samples for evaluation
-train_sample = np.array(cv2.cvtColor(cv2.imread(os.path.join(x_train_dir, "human/00001.png")), cv2.COLOR_BGR2RGB))
-label_sample = np.array(cv2.imread(os.path.join(y_train_dir, "human/00001.png"), cv2.IMREAD_GRAYSCALE))
+train_sample = np.array(cv2.cvtColor(cv2.imread(os.path.join(x_train_dir, "human/00001.png")), cv2.COLOR_BGR2RGB),
+                        dtype='float32')
+label_sample = np.array(cv2.imread(os.path.join(y_train_dir, "human/00001.png"), cv2.IMREAD_GRAYSCALE), dtype='float32')
 test_sample = np.array(cv2.cvtColor(cv2.imread(os.path.join(x_test_dir, "VID_20170913_170437489_image_000001.png")),
-                           cv2.COLOR_BGR2RGB))
+                           cv2.COLOR_BGR2RGB), dtype='float32')
 
-train_sample = train_sample.reshape((1, 256, 256, img_n_channels))
-#label_sample = label_sample.reshape((1, 256, 256, 1))
-test_sample = test_sample.reshape((1, 256, 256, img_n_channels))
+train_sample = train_sample.reshape((1, 256, 256, img_n_channels))/255
+#label_sample = label_sample.reshape((1, 256, 256, 1))/255
+test_sample = test_sample.reshape((1, 256, 256, img_n_channels))/255
 
 """
 
@@ -99,18 +116,18 @@ X_test /= 255
 
 # Train the segmentation network
 BACKBONE = params["MODEL"]["ARCHITECTURE"]["ENCODER"]
-preprocess_input = sm.get_preprocessing(BACKBONE)
+#preprocess_input = sm.get_preprocessing(BACKBONE)
 
 # Sample inputs
-train_sample = preprocess_input(train_sample)
-test_sample = preprocess_input(test_sample)
+#train_sample = preprocess_input(train_sample)
+#test_sample = preprocess_input(test_sample)
 
 # Test inputs
 X_test = [cv2.cvtColor(cv2.imread(file), cv2.COLOR_BGR2RGB) for file in glob.glob(x_test_dir + "*.png")]
 X_test = X_test[:20]
-X_test = np.array(X_test)
+X_test = np.array(X_test, dtype='float32')
 X_test = X_test.reshape((X_test.shape[0], 256, 256, img_n_channels))
-x_test = preprocess_input(X_test)
+X_test /= 255
 
 """
 # preprocess input
@@ -214,7 +231,7 @@ validation_generator = zip(x_val_generator, y_val_generator)
 
 # Callback functions
 # Create a model checkpoint after every epoch
-model_save_checkpoint = ModelCheckpoint("../models/weights.{epoch:02d}-{loss:.2f}.hdf5",
+model_save_checkpoint = ModelCheckpoint("../models/model.{epoch:02d}-{loss:.2f}[{run_id}].hdf5",
                                         monitor='loss', verbose=1, save_best_only=False, mode='auto', period=5)
 
 # Stream the epoch loss to a file in JSON format. The file content
@@ -228,12 +245,12 @@ model_save_checkpoint = ModelCheckpoint("../models/weights.{epoch:02d}-{loss:.2f
 #    on_train_end=lambda logs: epoch_log.close()
 #)
 
-def eval_epoch(epoch_log, x_test, epoch, logs):
-    """ Write loss to a log and predict on sample images """
-    epoch_log.write(
-        json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n')
-    print(x_test)
-    cv2.imwrite("../training_visualisations/test_epoch_{}.png".format(epoch), model.predict(x_test[1]))
+
+#def eval_epoch(epoch_log, x_test, epoch, logs):
+#    """ Write loss to a log and predict on sample images """
+#    epoch_log.write(
+#        json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n')
+#    cv2.imwrite("../training_visualisations/test_epoch_{}.png".format(epoch), model.predict(x_test[1]))
 
 
 # Define model
@@ -249,23 +266,23 @@ model.fit_generator(
     steps_per_epoch=params["MODEL"]["STEPS_PER_EPOCH"],
     validation_data=validation_generator,
     validation_steps=params["MODEL"]["VALIDATION_STEPS"],
-    callbacks=[PredOnEpochEnd(log_path, x_train=train_sample, x_test=test_sample, pred_path=pred_path),
-               model_save_checkpoint],
+    callbacks=[PredOnEpochEnd(log_path, x_train=train_sample, x_test=test_sample,
+                              pred_path=train_pred_path, run_id=run_id), model_save_checkpoint],
     use_multiprocessing=params["ENV"]["USE_MULTIPROCESSING"]
 )
 
 # Save the final model's weights
-model.save("../models/model-{}.h5".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+model.save("../models/final_model[{}].hdf5".format(run_id))
 
 print("Model fit. Predicting...")
-preds = model.predict(x_test)
+preds = model.predict(X_test)
 
 preds = preds.reshape(preds.shape[0], 256, 256)
 preds *= 255
 preds.astype(np.uint8)
 
 for i, pred in enumerate(preds, 1):
-    cv2.imwrite("../test_visualisations/img_{}_pred.png".format(i), pred)
+    cv2.imwrite(os.path.join(test_pred_path, "img_{}_pred[{}].png".format(i, run_id)), pred)
 
 plt.imshow(preds[0], cmap='gray')
 plt.show()

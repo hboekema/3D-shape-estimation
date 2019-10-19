@@ -5,13 +5,13 @@ import tensorflow as tf
 import numpy as np
 import json
 import cv2
-from datetime import datetime
 
 
 class PredOnEpochEnd(tf.keras.callbacks.Callback):
-    def __init__(self, log_path, x_train=None, x_val=None, x_test=None, pred_path="../"):
+    def __init__(self, log_path, x_train=None, x_val=None, x_test=None, pred_path="../", run_id="no id"):
         # Open the log file
-        log_path = os.path.join(log_path, "losses_{}.txt".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        self.run_id = run_id
+        log_path = os.path.join(log_path, "losses[{}].txt".format(self.run_id))
         self.epoch_log = open(log_path, mode='wt', buffering=1)
 
         # Store path for prediction visualisations
@@ -33,15 +33,15 @@ class PredOnEpochEnd(tf.keras.callbacks.Callback):
                     preds *= 255
                     preds = preds.astype(np.uint8)
                     for i, pred in enumerate(preds, 1):
-                        cv2.imwrite(os.path.join(self.pred_path,
-                                                 "pred_{}_img_{}_epoch_{}.png".format(data_type, i, epoch+1)), pred*255)
+                        cv2.imwrite(os.path.join(self.pred_path, "{}-img{}.{}[{}].png"
+                                                 .format(data_type, i, epoch+1, self.run_id)), pred*255)
                 else:
                     # @TODO: generalise this to any W, H and n_channels
                     data = np.array(data).reshape((1, 256, 256, 3))
                     pred = self.model.predict(data).reshape((1, 256, 256))
                     pred *= 255
                     pred = pred.astype(np.uint8)
-                    cv2.imwrite(os.path.join(self.pred_path, "pred_{}_img_epoch_{}.png".format(data_type, epoch+1)),
-                                pred[0]*255)
+                    cv2.imwrite(os.path.join(self.pred_path, "{}-img.{}[{}].png"
+                                             .format(data_type, epoch+1, self.run_id)), pred[0]*255)
 
 

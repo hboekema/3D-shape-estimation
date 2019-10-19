@@ -5,7 +5,8 @@
     "USE_MULTIPROCESSING" : true,
     "WORKERS" : 6,
     "LOG_PATH" : "../logs/",
-    "VISUALISATION_PATH" : "../training_visualisations/"
+    "TRAINING_VIS_PATH" : "../training_visualisations/",
+    "TEST_VIS_PATH" : "../test_visualisations/"
   },
 
   "DATA" : {
@@ -13,7 +14,7 @@
       "TRAINING_MASKS" : "../../../data/train_labels_subset/",
       "VALIDATION_IMG" : ".",
       "VALIDATION_MASKS" : "",
-      "TEST_IMG" : "../../../data/test_img/",
+      "TEST_IMG" : "../../../data/test_img/human/",
       "TEST_MASKS" : ""
     },
     "IMG_INFO" : {"INPUT_WH" : [256, 256], "N_CHANNELS" : 3},
@@ -28,9 +29,9 @@
   },
 
   "MODEL" : {
-    "EPOCHS" : 1,
-    "STEPS_PER_EPOCH": 15,
-    "VALIDATION_STEPS": 8,
+    "EPOCHS" : 6,
+    "STEPS_PER_EPOCH": 2,
+    "VALIDATION_STEPS": 1,
     "ARCHITECTURE" : {"ENCODER" : "resnet34", "DECODER" : ""},
     "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0, 1.0], "LOSSES" : ["binary_crossentropy", "jaccard_loss"]},
     "METRICS" : ["IOU"]
