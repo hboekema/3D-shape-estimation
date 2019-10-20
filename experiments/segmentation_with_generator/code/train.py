@@ -13,6 +13,7 @@ from keras.callbacks import LambdaCallback, ModelCheckpoint
 from keras.preprocessing.image import ImageDataGenerator
 from matplotlib import pyplot as plt
 import argparse
+import tensorflow as tf
 
 #from data_generator import DataGenerator
 from callbacks import PredOnEpochEnd
@@ -36,10 +37,20 @@ else:
     run_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # Set number of GPUs to use
+with open(args.config, 'r') as file:
+    params = json.load(file)
+
 os.environ["CUDA_VISIBLE_DEVICES"] = params["ENV"]["CUDA_VISIBLE_DEVICES"]
 
 # Set Keras format
+#config = tf.ConfigProto()
+#config.gpu_options.allow_growth=True
+#sess = tf.Session(config=config)
+#keras.backend.set_session(sess)
 keras.backend.set_image_data_format(params["ENV"]["CHANNEL_FORMAT"])
+
+# Set this to true for a more verbose output
+tf.debugging.set_log_device_placement(False)
 
 # Store the data paths
 x_train_dir = params["DATA"]["SOURCE"]["TRAINING_IMG"]
