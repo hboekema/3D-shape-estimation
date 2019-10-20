@@ -231,8 +231,9 @@ validation_generator = zip(x_val_generator, y_val_generator)
 
 # Callback functions
 # Create a model checkpoint after every epoch
-model_save_checkpoint = ModelCheckpoint("../models/model.{epoch:02d}-{loss:.2f}[{run_id}].hdf5",
-                                        monitor='loss', verbose=1, save_best_only=False, mode='auto', period=5)
+model_save_checkpoint = ModelCheckpoint("../models/model.{epoch:02d}-{loss:.2f} " + str(run_id) + ".hdf5",
+                                        monitor='loss', verbose=1, save_best_only=False, mode='auto',
+                                        period=params["MODEL"]["CHKPT_PERIOD"])
 
 # Stream the epoch loss to a file in JSON format. The file content
 # is not well-formed JSON but rather has a JSON object per line.
