@@ -4,6 +4,9 @@ from matplotlib import pyplot as plt
 import segmentation_models as sm
 import argparse
 import numpy as np
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = '4'
 
 # Parse the command-line arguments
 parser = argparse.ArgumentParser()

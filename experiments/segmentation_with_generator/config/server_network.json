@@ -1,10 +1,11 @@
 {
   "ENV": {
-    "CUDA_VISIBLE_DEVICES": "6,7",
+    "CUDA_VISIBLE_DEVICES": "4",
     "CHANNEL_FORMAT": "channels_last",
     "USE_MULTIPROCESSING" : true,
     "LOG_PATH" : "../logs/",
-    "VISUALISATION_PATH" : "../training_visualisations/"
+    "TRAINING_VIS_PATH" : "../training_visualisations/",
+    "TEST_VIS_PATH" : "../test_visualisations/"
   },
 
   "DATA" : {
@@ -27,9 +28,10 @@
   },
 
   "MODEL" : {
-    "EPOCHS" : 8,
-    "STEPS_PER_EPOCH": 30,
-    "VALIDATION_STEPS": 10,
+    "EPOCHS" : 50,
+    "STEPS_PER_EPOCH" : 600,
+    "VALIDATION_STEPS" : 100,
+    "CHKPT_PERIOD" : 20,
     "ARCHITECTURE" : {"ENCODER" : "resnet34", "DECODER" : ""},
     "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0, 1.0], "LOSSES" : ["binary_crossentropy", "jaccard_loss"]},
     "METRICS" : ["IOU"]
