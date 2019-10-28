@@ -37,9 +37,6 @@ else:
     run_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # Set number of GPUs to use
-with open(args.config, 'r') as file:
-    params = json.load(file)
-
 os.environ["CUDA_VISIBLE_DEVICES"] = params["ENV"]["CUDA_VISIBLE_DEVICES"]
 
 # Set Keras format

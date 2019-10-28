@@ -10,15 +10,15 @@
   },
 
   "DATA" : {
-    "SOURCE" : {"TRAINING_IMG" : "../../../data/train_img_subset/",
-      "TRAINING_MASKS" : "../../../data/train_labels_subset/",
+    "SOURCE" : {"TRAINING_IMG" : "../../../data/silhouette/train_img_subset/",
+      "TRAINING_MASKS" : "../../../data/silhouette/train_labels_subset/",
       "VALIDATION_IMG" : ".",
       "VALIDATION_MASKS" : "",
-      "TEST_IMG" : "../../../data/test_img/human/",
+      "TEST_IMG" : "../../../data/silhouette/test_img/human/",
       "TEST_MASKS" : ""
     },
     "IMG_INFO" : {"INPUT_WH" : [256, 256], "N_CHANNELS" : 3},
-    "MASK_INFO" : {"INPUT_WH" : [256, 256], "N_CHANNELS" : 1, "N_CLASSES" : 1, "CLASSES" : ["Human"]},
+    "MASK_INFO" : {"INPUT_WH" : [256, 256], "N_CHANNELS" : 1, "N_CLASSES" : 1, "CLASSES" : ["unknown"]},
     "PREPROCESSING" : {},
     "AUGMENTATIONS" : {"ROTATION" : 30, "TRANSLATION" : 20, "SHEAR" : 0.2}
   },
