@@ -27,16 +27,13 @@ class PredOnEpochEnd(tf.keras.callbacks.Callback):
         # Predict on all of the given silhouettes
         for data_type, data in self.pred_data.items():
             if data is not None:
-                if isinstance(data, list) or type(data) == np.array:
-                    preds = self.model.predict(data)
-                    for i, pred in enumerate(preds, 1):
-                        self.smpl.set_params(pred[:72].reshape((24, 3)), pred[72:82], pred[82:])
-                        self.smpl.save_to_obj(os.path.join(self.pred_path,
-                                                           "{}_pred_{:03d}[{}].obj".format(data_type, i, self.run_id)))
-
-                else:
+                if not isinstance(data, list) or type(data) == np.array:
                     data = np.array(data)
-                    pred = self.model.predict(data)
+                    data = data.reshape((1, *data.shape))
+
+                preds = self.model.predict(data)
+                for i, pred in enumerate(preds, 1):
                     self.smpl.set_params(pred[:72].reshape((24, 3)), pred[72:82], pred[82:])
                     self.smpl.save_to_obj(os.path.join(self.pred_path,
-                                                       "{}_pred.obj[{}]".format(data_type, self.run_id)))
+                                                       "{}_pred_{:03d}[{}].obj".format(data_type, i, self.run_id)))
+

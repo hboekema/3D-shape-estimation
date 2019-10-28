@@ -172,8 +172,8 @@ test_sample_y = np.array(np.load(os.path.join(test_dir, "test_sample_0000.npy"))
 smpl = SMPLModel('../SMPL/model.pkl')
 train_sample_pc = smpl.set_params(train_sample_y[:72].reshape((24, 3)), train_sample_y[72:82], train_sample_y[82:])
 test_sample_pc = smpl.set_params(test_sample_y[:72].reshape((24, 3)), test_sample_y[72:82], test_sample_y[82:])
-train_sample = Mesh(pointcloud=train_sample_pc).render_silhouette(dim=silh_dim, show=False)
-test_sample = Mesh(pointcloud=test_sample_pc).render_silhouette(dim=silh_dim, show=False)
+train_sample = Mesh(pointcloud=train_sample_pc).render_silhouette(dim=silh_dim, show=False).reshape((*silh_dim, silh_n_channels))
+test_sample = Mesh(pointcloud=test_sample_pc).render_silhouette(dim=silh_dim, show=False).reshape((*silh_dim, silh_n_channels))
 
 # # Get the SMPL data
 # Y_train = []
@@ -253,7 +253,7 @@ encoder.add(Dense(128, activation="relu"))
 encoder.add(Dropout(0.5))
 encoder.add(Dense(85, activation="tanh"))
 
-encoder.compile(optimizer=Adam(), loss=silh_bce, metrics=["accuracy"])
+encoder.compile(optimizer=Adam(), loss="mean_squared_error", metrics=["accuracy"])
 
 # Train the model
 print("Training model...")
