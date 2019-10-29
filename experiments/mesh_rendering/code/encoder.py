@@ -29,21 +29,20 @@ os.environ["CUDA_VISIBLE_DEVICES"] = params["ENV"]["CUDA_VISIBLE_DEVICES"]
 import glob
 import numpy as np
 import tensorflow as tf
-import keras
-from keras import Sequential
-from keras.layers import Conv2D, Dense, Dropout, MaxPooling2D, Flatten, BatchNormalization
-from keras.optimizers import Adam
-from keras.losses import binary_crossentropy
-from keras.callbacks import ModelCheckpoint
-from keras.utils import Sequence
+# import keras
+# from keras import Sequential
+# from keras.layers import Conv2D, Dense, Dropout, MaxPooling2D, Flatten, BatchNormalization
+# from keras.optimizers import Adam
+# from keras.losses import binary_crossentropy
+# from keras.callbacks import ModelCheckpoint
+# from keras.utils import Sequence
 
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 from callbacks import PredOnEpochEnd
 
-
 # Set Keras format
-keras.backend.set_image_data_format(params["ENV"]["CHANNEL_FORMAT"])
+tf.keras.backend.set_image_data_format(params["ENV"]["CHANNEL_FORMAT"])
 
 # Store the data paths
 train_dir = params["DATA"]["SOURCE"]["TRAIN"]
@@ -64,6 +63,7 @@ batch_size = params["GENERATOR"]["BATCH_SIZE"]
 epochs = params["MODEL"]["EPOCHS"]
 steps_per_epoch = params["MODEL"]["STEPS_PER_EPOCH"]
 validation_steps = params["MODEL"]["VALIDATION_STEPS"]
+
 
 # Define loss function
 def silh_bce(y_true, y_pred):
@@ -87,11 +87,12 @@ def silh_bce(y_true, y_pred):
     silh_true = Mesh(pointcloud=pc_true).render_silhouette(dim=img_dim, show=False)
     silh_pred = Mesh(pointcloud=pc_pred).render_silhouette(dim=img_dim, show=False)
 
-    return binary_crossentropy(silh_true, silh_pred)
+    # Return the silhouette's cross-entropy
+    return tf.keras.losses.BinaryCrossentropy(silh_true, silh_pred)
 
 
 # Load the SMPL data
-class SilhouetteDataGenerator(Sequence):
+class SilhouetteDataGenerator(tf.keras.utils.Sequence):
     def __init__(self, data_dir, batch_size=32, img_dim=(256, 256), frac_randomised=0.2, noise=0.01):
         self.data_dir = data_dir
         self.batch_size = batch_size
@@ -172,8 +173,15 @@ test_sample_y = np.array(np.load(os.path.join(test_dir, "test_sample_0000.npy"))
 smpl = SMPLModel('../SMPL/model.pkl')
 train_sample_pc = smpl.set_params(train_sample_y[:72].reshape((24, 3)), train_sample_y[72:82], train_sample_y[82:])
 test_sample_pc = smpl.set_params(test_sample_y[:72].reshape((24, 3)), test_sample_y[72:82], test_sample_y[82:])
-train_sample = Mesh(pointcloud=train_sample_pc).render_silhouette(dim=silh_dim, show=False).reshape((*silh_dim, silh_n_channels))
-test_sample = Mesh(pointcloud=test_sample_pc).render_silhouette(dim=silh_dim, show=False).reshape((*silh_dim, silh_n_channels))
+train_sample = Mesh(pointcloud=train_sample_pc).render_silhouette(dim=silh_dim, show=False)
+test_sample = Mesh(pointcloud=test_sample_pc).render_silhouette(dim=silh_dim, show=False)
+
+# Format the sample data
+train_sample = train_sample.reshape((*silh_dim, silh_n_channels)).astype("float32")
+test_sample = test_sample.reshape((*silh_dim, silh_n_channels)).astype("float32")
+train_sample /= 255
+test_sample /= 255
+
 
 # # Get the SMPL data
 # Y_train = []
@@ -227,33 +235,56 @@ test_sample = Mesh(pointcloud=test_sample_pc).render_silhouette(dim=silh_dim, sh
 # X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=0.1)
 
 # Create a model checkpoint after every epoch
-model_save_checkpoint = ModelCheckpoint("../models/model.{epoch:02d}-{loss:.2f} " + str(run_id) + ".hdf5",
-                                        monitor='loss', verbose=1, save_best_only=False, mode='auto',
-                                        period=params["MODEL"]["CHKPT_PERIOD"])
+model_save_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+    "../models/model.{epoch:02d}-{loss:.2f} " + str(run_id) + ".hdf5",
+    monitor='loss', verbose=1, save_best_only=False, mode='auto',
+    period=params["MODEL"]["CHKPT_PERIOD"])
 
 # Use a sequential CNN to learn SMPL parameters
-encoder = Sequential()
+encoder = tf.keras.models.Sequential([
+    tf.keras.layers.Conv2D(64, (3, 3), activation="relu", input_shape=(*silh_dim, silh_n_channels)),
+    tf.keras.layers.Conv2D(64, (3, 3), activation="relu"),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dropout(0.25),
 
-encoder.add(Conv2D(64, (3, 3), activation="relu", input_shape=(*silh_dim, silh_n_channels)))
-encoder.add(Conv2D(64, (3, 3), activation="relu"))
-encoder.add(MaxPooling2D((2, 2)))
-encoder.add(BatchNormalization())
-encoder.add(Dropout(0.25))
+    tf.keras.layers.Conv2D(128, (3, 3), activation="relu"),
+    tf.keras.layers.Conv2D(128, (3, 3), activation="relu"),
+    tf.keras.layers.MaxPooling2D((2, 2)),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dropout(0.25),
 
-encoder.add(Conv2D(128, (3, 3), activation="relu"))
-encoder.add(Conv2D(128, (3, 3), activation="relu"))
-encoder.add(MaxPooling2D((2, 2)))
-encoder.add(BatchNormalization())
-encoder.add(Dropout(0.25))
+    tf.keras.layers.Flatten(),
+    tf.keras.layers.Dense(256, activation="relu"),
+    tf.keras.layers.Dropout(0.5),
+    tf.keras.layers.Dense(128, activation="relu"),
+    tf.keras.layers.Dropout(0.5),
+    tf.keras.layers.Dense(85, activation="tanh")
+])
 
-encoder.add(Flatten())
-encoder.add(Dense(256, activation="relu"))
-encoder.add(Dropout(0.5))
-encoder.add(Dense(128, activation="relu"))
-encoder.add(Dropout(0.5))
-encoder.add(Dense(85, activation="tanh"))
+# encoder.add(Conv2D(64, (3, 3), activation="relu", input_shape=(*silh_dim, silh_n_channels)))
+# encoder.add(Conv2D(64, (3, 3), activation="relu"))
+# encoder.add(MaxPooling2D((2, 2)))
+# encoder.add(BatchNormalization())
+# encoder.add(Dropout(0.25))
+#
+# encoder.add(Conv2D(128, (3, 3), activation="relu"))
+# encoder.add(Conv2D(128, (3, 3), activation="relu"))
+# encoder.add(MaxPooling2D((2, 2)))
+# encoder.add(BatchNormalization())
+# encoder.add(Dropout(0.25))
+#
+# encoder.add(Flatten())
+# encoder.add(Dense(256, activation="relu"))
+# encoder.add(Dropout(0.5))
+# encoder.add(Dense(128, activation="relu"))
+# encoder.add(Dropout(0.5))
+# encoder.add(Dense(85, activation="tanh"))
 
-encoder.compile(optimizer=Adam(), loss="mean_squared_error", metrics=["accuracy"])
+tf.keras.backend.clear_session()
+loss = tf.keras.losses.mean_squared_error
+optimizer = tf.keras.optimizers.Adam()
+encoder.compile(optimizer=optimizer, loss=tf.keras.losses.mean_squared_error, metrics=["accuracy"])
 
 # Train the model
 print("Training model...")

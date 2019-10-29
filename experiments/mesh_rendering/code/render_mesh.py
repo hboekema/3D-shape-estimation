@@ -1,8 +1,12 @@
 import os
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from PIL import Image, ImageOps
-from scipy.ndimage.morphology import binary_opening
+from scipy.ndimage.morphology import binary_closing
+import trimesh
+
+matplotlib.use("Qt5Agg")
 
 class Mesh:
     def __init__(self, filepath=None, pointcloud=None):
@@ -24,14 +28,14 @@ class Mesh:
             # Read the file a line at a time, identifying vertices and faces
             for line in file:
                 if line[0] == 'v':
-                    self.verts.append(line[1:].split())
+                    self.verts.append([float(vi) for vi in line[2:].split(sep=' ')])
                 elif line[0] == 'f':
-                    self.faces.append(line[1:].split())
+                    self.faces.append([int(fi) - 1 for fi in line[2:].split(sep=' ')])
                 else:
                     pass
 
-            self.verts = np.array(self.verts).astype('float32')
-            self.faces = np.array(self.faces).astype(np.uint8)
+            self.verts = np.array(self.verts, dtype="float32")
+            self.faces = np.array(self.faces, dtype=int)
 
     def __repr__(self):
         """ Represent object as the arrays of its vertices and faces """
@@ -54,7 +58,12 @@ class Mesh:
 
         return new_verts
 
-    def render_silhouette(self, dim=(256, 256), padding=0.15, show=True):
+    def render3D(self):
+        """ Render the mesh in 3D """
+        mesh = trimesh.Trimesh(vertices=self.verts, faces=self.faces)
+        mesh.show(resolution=(512, 512))
+
+    def render_silhouette(self, dim=(256, 256), padding=0.15, morph_mask=None, show=True, title="silhouette"):
         """ Create a silhouette out of a 2D slice of the pointcloud """
         # Define the scale factors and padding
         x_sf = dim[0] - 1
@@ -83,11 +92,20 @@ class Mesh:
             # Fill in values with a silhouette coordinate on them
             image[coord[1], coord[0]] = 0
 
-        # Finally, perform a morphological closing operation (i.e. opening on the background) to fill in the silhouette
-        image = binary_opening(image, iterations=3)
+        # Finally, perform a morphological closing operation to fill in the silhouette
+        if morph_mask is None:
+            # Use a circular mask as the default operator
+            morph_mask = np.array([[0.34, 0.34, 0.34],
+                                   [0.34, 1.00, 0.34],
+                                   [0.34, 0.34, 0.34]
+                                   ])
+        image = np.invert(image.astype(bool))
+        image = np.invert(binary_closing(image, structure=morph_mask, iterations=2)).astype(np.uint8)
+        image *= 255
 
         if show:
             plt.imshow(image, cmap="gray")
+            plt.title(title)
             plt.show()
 
         return image
@@ -125,11 +143,10 @@ class Mesh:
 
         plt.close()
 
-
-
 if __name__ == "__main__":
-    mesh_dir = "../meshes/"
+    mesh_dir = "../example_meshes/"
     obj_paths = os.listdir(mesh_dir)
     for obj_path in obj_paths:
         mesh = Mesh(os.path.join(mesh_dir, obj_path))
+        mesh.render3D()
         mesh.render_silhouette()

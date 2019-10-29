@@ -28,8 +28,8 @@
 
   "MODEL" : {
     "EPOCHS" : 10,
-    "STEPS_PER_EPOCH": 40,
-    "VALIDATION_STEPS": 10,
+    "STEPS_PER_EPOCH": 2,
+    "VALIDATION_STEPS": 1,
     "CHKPT_PERIOD": 5,
     "ARCHITECTURE" : {"ENCODER" : "", "DECODER" : ""},
     "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0], "LOSSES" : ["mean_squared_error"]},

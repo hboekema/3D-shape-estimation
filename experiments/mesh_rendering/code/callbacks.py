@@ -2,10 +2,13 @@ import os
 import json
 import numpy as np
 import tensorflow as tf
+import matplotlib.pyplot as plt
+
+from render_mesh import Mesh
 
 
 class PredOnEpochEnd(tf.keras.callbacks.Callback):
-    def __init__(self, log_path, smpl_model, x_train=None, x_val=None, x_test=None, pred_path="../", run_id="no id"):
+    def __init__(self, log_path, smpl_model, x_train=None, x_val=None, x_test=None, pred_path="../", run_id="no id", visualise=True):
         # Open the log file
         self.run_id = run_id
         log_path = os.path.join(log_path, "losses[{}].txt".format(self.run_id))
@@ -19,6 +22,7 @@ class PredOnEpochEnd(tf.keras.callbacks.Callback):
 
         # Store data to be used for training examples
         self.pred_data = {"train": x_train, "val": x_val, "test": x_test}
+        self.visualise = visualise
 
     def on_epoch_end(self, epoch, logs=None):
         """ Store the model loss and accuracy at the end of every epoch, and store a model prediction on data """
@@ -37,3 +41,19 @@ class PredOnEpochEnd(tf.keras.callbacks.Callback):
                     self.smpl.save_to_obj(os.path.join(self.pred_path,
                                                        "{}_pred_{:03d}[{}].obj".format(data_type, i, self.run_id)))
 
+                if self.visualise:
+                    # Show a random sample
+                    rand_index = np.random.randint(low=0, high=len(data)) + 1
+                    mesh = Mesh(filepath=os.path.join(self.pred_path,
+                                               "{}_pred_{:03d}[{}].obj".format(data_type, rand_index, self.run_id)))
+
+                    # Show the true silhouette
+                    true_silh = data[rand_index - 1]
+                    true_silh = true_silh.reshape(true_silh.shape[:-1])
+                    plt.imshow(true_silh, cmap='gray')
+                    plt.title("True {} silhouette {:03d}".format(data_type, rand_index))
+                    plt.show()
+
+                    # Show the predicted silhouette and mesh
+                    mesh.render_silhouette(title="Predicted {} silhouette {:03d}".format(data_type, rand_index))
+                    mesh.render3D()
