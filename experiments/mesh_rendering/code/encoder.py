@@ -113,8 +113,11 @@ class SilhouetteDataGenerator(tf.keras.utils.Sequence):
         num_real = int(self.batch_size - num_artificial)
 
         # Retrieve a random batch of parameters from the data directory
-        data = np.array(os.listdir(self.data_dir))
-        Y_batch_ids = data[np.random.randint(low=0, high=data.shape[0], size=num_real)]
+        if num_real > 0:
+            data = np.array(os.listdir(self.data_dir))
+            Y_batch_ids = data[np.random.randint(low=0, high=data.shape[0], size=num_real)]
+        else:
+            Y_batch_ids = []
 
         Y_batch = []
         X_batch = []
@@ -161,16 +164,23 @@ class SilhouetteDataGenerator(tf.keras.utils.Sequence):
         return X_batch, Y_batch
 
 
-train_gen = SilhouetteDataGenerator(train_dir, batch_size=batch_size, img_dim=silh_dim)
-val_gen = SilhouetteDataGenerator(val_dir, batch_size=batch_size, img_dim=silh_dim)
-test_gen = SilhouetteDataGenerator(test_dir, batch_size=batch_size, img_dim=silh_dim, frac_randomised=0.0, noise=0.0)
+train_gen = SilhouetteDataGenerator(train_dir, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0)
+val_gen = SilhouetteDataGenerator(val_dir, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0)
+test_gen = SilhouetteDataGenerator(test_dir, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0, noise=0.0)
 
 # Samples for evaluating the model after epochs
-train_sample_y = np.array(np.load(os.path.join(train_dir, "train_sample_0000.npy")))
-test_sample_y = np.array(np.load(os.path.join(test_dir, "test_sample_0000.npy")))
+# train_sample_y = np.array(np.load(os.path.join(train_dir, "train_sample_0000.npy")))
+# test_sample_y = np.array(np.load(os.path.join(test_dir, "test_sample_0000.npy")))
 
 # Generate the silhouettes from the SMPL parameters
 smpl = SMPLModel('../SMPL/model.pkl')
+train_sample_y = np.array([0.65 * (np.random.rand(*smpl.pose_shape) - 0.5).ravel(),
+                           0.06 * (np.random.rand(*smpl.beta_shape) - 0.5),
+                           np.zeros(smpl.trans_shape)])
+test_sample_y = np.array([0.65 * (np.random.rand(*smpl.pose_shape) - 0.5).ravel(),
+                          0.06 * (np.random.rand(*smpl.beta_shape) - 0.5),
+                          np.zeros(smpl.trans_shape)])
+
 train_sample_pc = smpl.set_params(train_sample_y[:72].reshape((24, 3)), train_sample_y[72:82], train_sample_y[82:])
 test_sample_pc = smpl.set_params(test_sample_y[:72].reshape((24, 3)), test_sample_y[72:82], test_sample_y[82:])
 train_sample = Mesh(pointcloud=train_sample_pc).render_silhouette(dim=silh_dim, show=False)
@@ -234,11 +244,17 @@ test_sample /= 255
 # X_train, X_test, Y_train, Y_test = train_test_split(X_train, Y_train, test_size=0.1)
 # X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=0.1)
 
-# Create a model checkpoint after every epoch
+# Callback functions
+# Create a model checkpoint after every few epochs
 model_save_checkpoint = tf.keras.callbacks.ModelCheckpoint(
     "../models/model.{epoch:02d}-{loss:.2f} " + str(run_id) + ".hdf5",
     monitor='loss', verbose=1, save_best_only=False, mode='auto',
     period=params["MODEL"]["CHKPT_PERIOD"])
+
+# Predict on sample images at the end of every few epochs
+epoch_pred_cb = PredOnEpochEnd(log_path, smpl, x_train=train_sample, x_test=test_sample,
+                               pred_path=train_pred_path, run_id=run_id, period=params["MODEL"]["CHKPT_PERIOD"])
+
 
 # Use a sequential CNN to learn SMPL parameters
 encoder = tf.keras.models.Sequential([
@@ -281,7 +297,6 @@ encoder = tf.keras.models.Sequential([
 # encoder.add(Dropout(0.5))
 # encoder.add(Dense(85, activation="tanh"))
 
-tf.keras.backend.clear_session()
 loss = tf.keras.losses.mean_squared_error
 optimizer = tf.keras.optimizers.Adam()
 encoder.compile(optimizer=optimizer, loss=tf.keras.losses.mean_squared_error, metrics=["accuracy"])
@@ -296,8 +311,7 @@ encoder.fit_generator(
     epochs=epochs,
     validation_data=val_gen,
     validation_steps=validation_steps,
-    callbacks=[PredOnEpochEnd(log_path, smpl, x_train=train_sample, x_test=test_sample,
-                              pred_path=train_pred_path, run_id=run_id), model_save_checkpoint],
+    callbacks=[epoch_pred_cb, model_save_checkpoint],
     use_multiprocessing=params["ENV"]["USE_MULTIPROCESSING"]
 )
 
