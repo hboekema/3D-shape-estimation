@@ -174,24 +174,27 @@ test_gen = SilhouetteDataGenerator(test_dir, batch_size=batch_size, img_dim=silh
 
 # Generate the silhouettes from the SMPL parameters
 smpl = SMPLModel('../SMPL/model.pkl')
-train_sample_y = np.array([0.65 * (np.random.rand(*smpl.pose_shape) - 0.5).ravel(),
-                           0.06 * (np.random.rand(*smpl.beta_shape) - 0.5),
-                           np.zeros(smpl.trans_shape)])
-test_sample_y = np.array([0.65 * (np.random.rand(*smpl.pose_shape) - 0.5).ravel(),
-                          0.06 * (np.random.rand(*smpl.beta_shape) - 0.5),
-                          np.zeros(smpl.trans_shape)])
-
-train_sample_pc = smpl.set_params(train_sample_y[:72].reshape((24, 3)), train_sample_y[72:82], train_sample_y[82:])
-test_sample_pc = smpl.set_params(test_sample_y[:72].reshape((24, 3)), test_sample_y[72:82], test_sample_y[82:])
-train_sample = Mesh(pointcloud=train_sample_pc).render_silhouette(dim=silh_dim, show=False)
-test_sample = Mesh(pointcloud=test_sample_pc).render_silhouette(dim=silh_dim, show=False)
+# train_sample_pc = smpl.set_params(train_sample_y[:72].reshape((24, 3)), train_sample_y[72:82], train_sample_y[82:])
+# test_sample_pc = smpl.set_params(test_sample_y[:72].reshape((24, 3)), test_sample_y[72:82], test_sample_y[82:])
+# train_sample = Mesh(pointcloud=train_sample_pc).render_silhouette(dim=silh_dim, show=False)
+# test_sample = Mesh(pointcloud=test_sample_pc).render_silhouette(dim=silh_dim, show=False)
 
 # Format the sample data
-train_sample = train_sample.reshape((*silh_dim, silh_n_channels)).astype("float32")
-test_sample = test_sample.reshape((*silh_dim, silh_n_channels)).astype("float32")
-train_sample /= 255
-test_sample /= 255
+# train_sample = train_sample.reshape((*silh_dim, silh_n_channels)).astype("float32")
+# test_sample = test_sample.reshape((*silh_dim, silh_n_channels)).astype("float32")
+# train_sample /= 255
+# test_sample /= 255
 
+# Artificial sample data
+sample_pose = 0.65 * (np.random.rand(*smpl.pose_shape) - 0.5)
+sample_beta = 0.06 * (np.random.rand(*smpl.beta_shape) - 0.5)
+sample_trans = np.zeros(smpl.trans_shape)
+
+sample_y = np.array([sample_pose.ravel(), sample_beta, sample_trans])
+sample_pc = smpl.set_params(sample_pose, sample_beta, sample_trans)
+sample_x = Mesh(pointcloud=sample_pc).render_silhouette(dim=silh_dim, show=False)
+sample_x = sample_x.reshape((*silh_dim, silh_n_channels)).astype("float32")
+sample_x /= 255
 
 # # Get the SMPL data
 # Y_train = []
@@ -252,7 +255,7 @@ model_save_checkpoint = tf.keras.callbacks.ModelCheckpoint(
     period=params["MODEL"]["CHKPT_PERIOD"])
 
 # Predict on sample images at the end of every few epochs
-epoch_pred_cb = PredOnEpochEnd(log_path, smpl, x_train=train_sample, x_test=test_sample,
+epoch_pred_cb = PredOnEpochEnd(log_path, smpl, x_test=sample_x,
                                pred_path=train_pred_path, run_id=run_id, period=params["MODEL"]["CHKPT_PERIOD"])
 
 
