@@ -8,22 +8,45 @@ from render_mesh import Mesh
 class Encoder(tf.keras.Model):
     def __init__(self):
         super(Encoder, self).__init__()
-        self.conv1a = tf.keras.layers.Conv2D(64, (3, 3), activation="relu")
-        self.conv1b = tf.keras.layers.Conv2D(64, (3, 3), activation="relu")
+        self.conv1a = tf.keras.layers.Conv2D(256, (5, 5), activation="relu")
+#        self.conv1b = tf.keras.layers.Conv2D(64, (3, 3), activation="relu")
         self.pool1 = tf.keras.layers.MaxPooling2D((2, 2))
         self.batchnorm1 = tf.keras.layers.BatchNormalization()
         self.dropout1 = tf.keras.layers.Dropout(0.25)
 
         self.conv2a = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
-        self.conv2b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
+#        self.conv2b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
         self.pool2 = tf.keras.layers.MaxPooling2D((2, 2))
         self.batchnorm2 = tf.keras.layers.BatchNormalization()
         self.dropout2 = tf.keras.layers.Dropout(0.25)
 
+        self.conv3a = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
+#        self.conv3b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
+        self.pool3 = tf.keras.layers.MaxPooling2D((2, 2))
+        self.batchnorm3 = tf.keras.layers.BatchNormalization()
+        self.dropout3 = tf.keras.layers.Dropout(0.25)
+
+        self.conv4a = tf.keras.layers.Conv2D(64, (7, 7), activation="relu")
+#        self.conv4b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
+        self.pool4 = tf.keras.layers.MaxPooling2D((2, 2))
+        self.batchnorm4 = tf.keras.layers.BatchNormalization()
+        self.dropout4 = tf.keras.layers.Dropout(0.25)
+
+        self.conv5a = tf.keras.layers.Conv2D(64, (7, 7), activation="relu")
+#        self.conv5b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
+        self.pool5 = tf.keras.layers.MaxPooling2D((2, 2))
+        self.batchnorm5 = tf.keras.layers.BatchNormalization()
+        self.dropout5 = tf.keras.layers.Dropout(0.25)
+
+        self.conv6a = tf.keras.layers.Conv2D(32, (3, 3), activation="relu")
+#        self.conv6b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
+        self.batchnorm6 = tf.keras.layers.BatchNormalization()
+        self.dropout6 = tf.keras.layers.Dropout(0.5)
+
         self.flatten = tf.keras.layers.Flatten()
-        self.dense1 = tf.keras.layers.Dense(256, activation="relu")
+        self.dense1 = tf.keras.layers.Dense(512, activation="relu")
         self.dropout3 = tf.keras.layers.Dropout(0.5)
-        self.dense2 = tf.keras.layers.Dense(128, activation="relu")
+        self.dense2 = tf.keras.layers.Dense(256, activation="relu")
         self.dropout4 = tf.keras.layers.Dropout(0.5)
         self.dense3 = tf.keras.layers.Dense(85, activation="tanh")
 
@@ -43,16 +66,39 @@ class Encoder(tf.keras.Model):
 
     def call(self, x):
         x = self.conv1a(x)
-        x = self.conv1b(x)
+        #x = self.conv1b(x)
         x = self.pool1(x)
         x = self.batchnorm1(x)
         x = self.dropout1(x)
 
         x = self.conv2a(x)
-        x = self.conv2b(x)
+        #x = self.conv2b(x)
         x = self.pool2(x)
         x = self.batchnorm2(x)
         x = self.dropout2(x)
+
+        x = self.conv3a(x)
+        #x = self.conv3b(x)
+        x = self.pool3(x)
+        x = self.batchnorm3(x)
+        x = self.dropout3(x)
+
+        x = self.conv4a(x)
+        #x = self.conv4b(x)
+        x = self.pool4(x)
+        x = self.batchnorm4(x)
+        x = self.dropout4(x)
+
+        x = self.conv5a(x)
+        #x = self.conv5b(x)
+        x = self.pool5(x)
+        x = self.batchnorm5(x)
+        x = self.dropout5(x)
+
+        x = self.conv6a(x)
+        #x = self.conv6b(x)
+        x = self.batchnorm6(x)
+        x = self.dropout6(x)
 
         x = self.flatten(x)
         x = self.dense1(x)

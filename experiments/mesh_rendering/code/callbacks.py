@@ -68,4 +68,7 @@ class PredOnEpochEnd():
 
                         # Show the predicted silhouette and mesh
                         mesh.render_silhouette(title="Predicted {} silhouette {:03d}".format(data_type, rand_index))
-                        mesh.render3D()
+                        try:
+                            mesh.render3D()
+                        except Exception:
+                            pass
