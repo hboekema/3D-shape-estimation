@@ -1,7 +1,8 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import numpy as np
 import pickle
 
+tf.disable_v2_behavior()
 
 def rodrigues(r):
   """
@@ -116,6 +117,7 @@ def smpl_model(model_path, betas, pose, trans, simplify=False):
     i: id_to_col[kintree_table[0, i]]
     for i in range(1, kintree_table.shape[1])
   }
+
   v_shaped = tf.tensordot(shapedirs, betas, axes=[[2], [0]]) + v_template
   J = tf.matmul(J_regressor, v_shaped)
   pose_cube = tf.reshape(pose, (-1, 1, 3))

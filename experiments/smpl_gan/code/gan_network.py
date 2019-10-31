@@ -187,7 +187,7 @@ class GAN:
                     loss_dict["gan_loss"] = "{:.03f}".format(gan_outputs[0])
                     loss_dict["gan_acc"] = "{:.03f}".format(gan_outputs[1])
 
-                    pbar.set_postfix(loss_dict, refresh=True, )
+                    pbar.set_postfix(loss_dict, refresh=True)
                     pbar.update()
 
             tqdm.close(pbar)

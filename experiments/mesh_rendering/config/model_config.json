@@ -22,7 +22,7 @@
   },
 
   "GENERATOR" : {
-    "BATCH_SIZE" : 16,
+    "BATCH_SIZE" : 2,
     "SHUFFLE" : true
   },
 

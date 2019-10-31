@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+from copy import copy
 from PIL import Image, ImageOps
 from scipy.ndimage.morphology import binary_closing
 import trimesh
@@ -70,7 +71,8 @@ class Mesh:
         y_sf = dim[1] - 1
 
         # Collapse the points onto the x-y plane by dropping the z-coordinate
-        mesh_slice = self.verts[:, :2]
+        verts = copy(self.verts)
+        mesh_slice = verts[:, :2]
 
         # Adjust the x-y coordinates by shifting appropriately (considering padding)
         mesh_slice[:, 0] -= np.min(mesh_slice[:, 0]) - padding
@@ -148,5 +150,5 @@ if __name__ == "__main__":
     obj_paths = os.listdir(mesh_dir)
     for obj_path in obj_paths:
         mesh = Mesh(os.path.join(mesh_dir, obj_path))
-        mesh.render3D()
         mesh.render_silhouette()
+        mesh.render3D()

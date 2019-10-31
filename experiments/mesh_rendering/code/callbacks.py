@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 
 from render_mesh import Mesh
 
-
-class PredOnEpochEnd(tf.keras.callbacks.Callback):
+#class PredOnEpochEnd(tf.keras.callbacks.Callback):
+class PredOnEpochEnd():
     def __init__(self, log_path, smpl_model, x_train=None, x_val=None, x_test=None, pred_path="../", period=5, run_id="no id", visualise=True):
         # Open the log file
         self.run_id = run_id
@@ -29,6 +29,12 @@ class PredOnEpochEnd(tf.keras.callbacks.Callback):
         # Store whether to visualise data during training
         self.visualise = visualise
 
+        # Store model
+        self.model = None
+
+    def set_model(self, model):
+        self.model = model
+
     def on_epoch_end(self, epoch, logs=None):
         """ Store the model loss and accuracy at the end of every epoch, and store a model prediction on data """
         self.epoch_log.write(json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n')
@@ -41,7 +47,7 @@ class PredOnEpochEnd(tf.keras.callbacks.Callback):
                         data = np.array(data)
                         data = data.reshape((1, *data.shape))
 
-                    preds = self.model.predict(data)
+                    preds = np.array(self.model.predict_(data))
                     for i, pred in enumerate(preds, 1):
                         self.smpl.set_params(pred[:72].reshape((24, 3)), pred[72:82], pred[82:])
                         self.smpl.save_to_obj(os.path.join(self.pred_path,
