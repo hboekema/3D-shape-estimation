@@ -40,7 +40,6 @@ from callbacks import PredOnEpochEnd
 # Ensure that TF2.0 is not used
 tf.disable_v2_behavior()
 tf.enable_eager_execution()
-print(tf.executing_eagerly())
 
 # Set Keras format
 tf.keras.backend.set_image_data_format(params["ENV"]["CHANNEL_FORMAT"])
@@ -146,12 +145,6 @@ train_gen = SilhouetteDataGenerator(train_dir, batch_size=batch_size, img_dim=si
 val_gen = SilhouetteDataGenerator(val_dir, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0)
 test_gen = SilhouetteDataGenerator(test_dir, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0, noise=0.0)
 
-# Generate TF Datasets from the generators
-train_ds = tf.data.Dataset.from_generator(train_gen, output_types=(np.uint8, np.float32))
-val_ds = tf.data.Dataset.from_generator(val_gen, output_types=(np.uint8, np.float32))
-test_ds = tf.data.Dataset.from_generator(test_gen, output_types=(np.uint8, np.float32))
-
-
 # Samples for evaluating the model after epochs
 # train_sample_y = np.array(np.load(os.path.join(train_dir, "train_sample_0000.npy")))
 # test_sample_y = np.array(np.load(os.path.join(test_dir, "test_sample_0000.npy")))
@@ -179,83 +172,6 @@ sample_pc = smpl.set_params(sample_pose, sample_beta, sample_trans)
 sample_x = Mesh(pointcloud=sample_pc).render_silhouette(dim=silh_dim, show=False)
 sample_x = sample_x.reshape((*silh_dim, silh_n_channels)).astype("float32")
 sample_x /= 255
-
-# # Get the SMPL data
-# Y_train = []
-# print("Loading data...")
-# for np_name in glob.glob(os.path.join(data_dir, '*.np[yz]')):
-#     data = np.load(np_name)
-#
-#     # Get the poses
-#     poses = data["poses"]
-#     poses = poses.reshape(poses.shape[0], 52, 3)[:, :24, :]
-#     # Get the betas
-#     betas = data["betas"][:10]
-#     # Get the trans
-#     trans = data["trans"]
-#
-#     # Concatenate the data to fit in a single array
-#     for i in range(poses.shape[0]):
-#         Y_train.append(np.concatenate([poses[i].ravel(), betas, trans[i]]))
-#
-# Y_train = np.array(Y_train, dtype="float32")
-#
-# if args.silhouettes is not None:
-#     print("Fetching silhouettes...")
-#     # Load the silhouettes
-#     X_train = np.array([cv2.imread(file, cv2.IMREAD_GRAYSCALE) for file in glob.glob(args.silhouettes + "*.png")], dtype="float32")
-# else:
-#     print("Generating silhouettes...")
-#     X_train = []
-#     # Generate the silhouettes from the SMPL parameters
-#     smpl = SMPLModel('../SMPL/model.pkl')
-#     silh_path = "../silhouettes/"
-#     for i, params in enumerate(Y_train):
-#         pose = params[:72].reshape((24, 3))
-#         beta = params[72:82]
-#         trans = params[82:]
-#
-#         # Create the body mesh
-#         pointcloud = smpl.set_params(pose, beta, trans)
-#
-#         # Render the silhouette
-#         silhouette = Mesh(pointcloud=pointcloud).render2D(save_path="../silhouettes/silhouette_{:03d}.png".format(i))
-#         X_train.append(np.array(silhouette))
-#
-#     X_train = np.array(X_train, dtype="float32")
-#
-# X_train /= 255
-# X_train = X_train.reshape((*X_train.shape, 1))
-#
-# # Split the dataset into train, test and validation sets
-# X_train, X_test, Y_train, Y_test = train_test_split(X_train, Y_train, test_size=0.1)
-# X_train, X_val, Y_train, Y_val = train_test_split(X_train, Y_train, test_size=0.1)
-
-# Define loss function
-def mesh_mse(y_true, y_pred):
-    """ Calculate the Euclidean distance between pairs of vertices in true and predicted point cloud,
-    generated from SMPL parameters """
-    # Specify silhouette dimensions
-    img_dim = (256, 256)
-
-    # Cast the arrays to 64-bit float
-    y_true = y_true.numpy()
-    y_pred = y_pred.numpy()
-    # y_true = tf.cast(y_true, tf.float64)
-    # y_pred = tf.cast(y_pred, tf.float64)
-
-    # Generate meshes from the SMPL parameters
-    # pc_true, _ = smpl_model('../SMPL/model.pkl', y_true[i, 72:82], y_true[i, :72], y_true[i, 82:85])
-    # pc_pred, _ = smpl_model('../SMPL/model.pkl', y_pred[72:82], y_pred[:72], y_pred[82:85])
-    pc_true = smpl.set_params(y_true[:72], y_true[72:82], y_true[82:])
-    pc_pred = smpl.set_params(y_pred[:72], y_pred[72:82], y_pred[82:])
-
-    # Generate silhouettes from the point clouds
-    silh_true = Mesh(pointcloud=pc_true).render_silhouette(dim=img_dim, show=False)
-    silh_pred = Mesh(pointcloud=pc_pred).render_silhouette(dim=img_dim, show=False)
-
-    # Return the silhouette's cross-entropy
-    return tf.keras.losses.BinaryCrossentropy(silh_true, silh_pred)
 
 # Callback functions
 # Create a model checkpoint after every few epochs
