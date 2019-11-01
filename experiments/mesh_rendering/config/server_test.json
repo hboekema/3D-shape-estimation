@@ -1,6 +1,6 @@
 {
   "ENV": {
-    "CUDA_VISIBLE_DEVICES": "7",
+    "CUDA_VISIBLE_DEVICES": "6,7",
     "CHANNEL_FORMAT": "channels_last",
     "USE_MULTIPROCESSING" : true,
     "WORKERS" : 6,

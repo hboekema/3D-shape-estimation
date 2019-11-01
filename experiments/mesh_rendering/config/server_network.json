@@ -1,6 +1,6 @@
 {
   "ENV": {
-    "CUDA_VISIBLE_DEVICES": "7",
+    "CUDA_VISIBLE_DEVICES": "6, 7",
     "CHANNEL_FORMAT": "channels_last",
     "USE_MULTIPROCESSING" : true,
     "WORKERS" : 6,
@@ -27,7 +27,7 @@
   },
 
   "MODEL" : {
-    "EPOCHS" : 10,
+    "EPOCHS" : 30,
     "STEPS_PER_EPOCH": 40,
     "VALIDATION_STEPS": 10,
     "CHKPT_PERIOD": 5,

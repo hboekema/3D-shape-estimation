@@ -266,7 +266,7 @@ def mesh_mse(y_true, y_pred):
 
 # Predict on sample images at the end of every few epochs
 epoch_pred_cb = PredOnEpochEnd(log_path, smpl, x_test=sample_x,
-                               pred_path=train_pred_path, run_id=run_id, period=params["MODEL"]["CHKPT_PERIOD"])
+                               pred_path=train_pred_path, run_id=run_id, period=params["MODEL"]["CHKPT_PERIOD"], visualise=False)
 
 # Make model entity
 encoder = Encoder()

@@ -12,7 +12,7 @@ class Encoder(tf.keras.Model):
         self.conv1b = tf.keras.layers.Conv2D(32, (3, 3), padding="same", activation="relu")
         self.pool1 = tf.keras.layers.MaxPooling2D((2, 2))
         self.batchnorm1 = tf.keras.layers.BatchNormalization()
-        #self.dropout1 = tf.keras.layers.Dropout(0.25)
+        self.dropout1 = tf.keras.layers.Dropout(0.25)
 
         self.conv2a = tf.keras.layers.Conv2D(64, (3, 3), padding="same", activation="relu")
 #        self.conv2b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
@@ -27,11 +27,10 @@ class Encoder(tf.keras.Model):
         #self.dropout3 = tf.keras.layers.Dropout(0.25)
 
         self.conv4a = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
-        self.conv4a = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
-        #self.conv4b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
+        self.conv4b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
         self.pool4 = tf.keras.layers.MaxPooling2D((2, 2))
         self.batchnorm4 = tf.keras.layers.BatchNormalization()
-        #self.dropout4 = tf.keras.layers.Dropout(0.25)
+        self.dropout4 = tf.keras.layers.Dropout(0.25)
 
         self.conv5a = tf.keras.layers.Conv2D(256, (3, 3), activation="relu")
         #self.conv5b = tf.keras.layers.Conv2D(128, (3, 3), activation="relu")
@@ -40,9 +39,9 @@ class Encoder(tf.keras.Model):
         #self.dropout5 = tf.keras.layers.Dropout(0.25)
 
         self.conv6a = tf.keras.layers.Conv2D(256, (3, 3), activation="relu")
-        self.conv6b = tf.keras.layers.Conv2D(256, (3, 3), activation="relu")
-        self.pool6 = tf.keras.layers.AveragePooling2D((5, 5))
-        self.dropout6 = tf.keras.layers.Dropout(0.5)
+        #self.conv6b = tf.keras.layers.Conv2D(256, (3, 3), activation="relu")
+        self.pool6 = tf.keras.layers.AveragePooling2D((3, 3))
+        self.dropout6 = tf.keras.layers.Dropout(0.25)
 
         self.flatten = tf.keras.layers.Flatten()
         self.dense1 = tf.keras.layers.Dense(512, activation="relu")
@@ -88,7 +87,7 @@ class Encoder(tf.keras.Model):
         x = self.conv4b(x)
         x = self.pool4(x)
         x = self.batchnorm4(x)
-        #x = self.dropout4(x)
+        x = self.dropout4(x)
 
         x = self.conv5a(x)
         #x = self.conv5b(x)
@@ -97,7 +96,7 @@ class Encoder(tf.keras.Model):
         #x = self.dropout5(x)
 
         x = self.conv6a(x)
-        x = self.conv6b(x)
+        #x = self.conv6b(x)
         x = self.pool6(x)
         #x = self.batchnorm6(x)
         x = self.dropout6(x)
