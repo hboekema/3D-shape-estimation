@@ -1,0 +1,35 @@
+{
+  "ENV": {
+    "CUDA_VISIBLE_DEVICES": "0",
+    "CHANNEL_FORMAT": "channels_last",
+    "USE_MULTIPROCESSING" : true,
+    "WORKERS" : 6,
+    "LOG_PATH" : "../logs/",
+    "TRAINING_VIS_PATH" : "../training_visualisations/",
+    "TEST_VIS_PATH" : "../test_visualisations/"
+  },
+
+  "DATA" : {
+    "SOURCE" : { "PARAMS" : "../../../data/AMASS/SSM_SYNCED/" },
+    "PARAM_INFO" : {},
+    "SILH_INFO" : {"INPUT_WH" : [128, 128], "N_CHANNELS": 1},
+    "PREPROCESSING" : {},
+    "AUGMENTATIONS" : {}
+  },
+
+  "GENERATOR" : {
+    "BATCH_SIZE" : 16,
+    "SHUFFLE" : true
+  },
+
+  "MODEL" : {
+    "EPOCHS" : 10,
+    "STEPS_PER_EPOCH": 20,
+    "VALIDATION_STEPS": 5,
+    "CHKPT_PERIOD": 5,
+    "ARCHITECTURE" : {"ENCODER" : "", "DECODER" : ""},
+    "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0], "LOSSES" : ["mean_squared_error"]},
+    "METRICS" : ["accuracy"]
+  }
+
+}

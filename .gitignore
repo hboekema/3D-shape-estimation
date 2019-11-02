@@ -8,6 +8,9 @@ data/
 # Models
 models/
 
+# Experiments
+experiments/
+
 # IntelliJ files
 .idea/
 .DS_Store
