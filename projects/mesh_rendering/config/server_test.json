@@ -28,9 +28,9 @@
 
   "MODEL" : {
     "EPOCHS" : 10,
-    "STEPS_PER_EPOCH": 10,
-    "VALIDATION_STEPS": 5,
-    "CHKPT_PERIOD": 2,
+    "STEPS_PER_EPOCH": 3,
+    "VALIDATION_STEPS": 1,
+    "CHKPT_PERIOD": 1,
     "ARCHITECTURE" : {"ENCODER" : "", "DECODER" : ""},
     "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0], "LOSSES" : ["mean_squared_error"]},
     "METRICS" : ["accuracy"]

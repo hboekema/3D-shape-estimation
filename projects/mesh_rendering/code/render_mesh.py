@@ -29,9 +29,9 @@ class Mesh:
             # Read the file a line at a time, identifying vertices and faces
             for line in file:
                 if line[0] == 'v':
-                    self.verts.append([float(vi) for vi in line[2:].split(sep=' ')])
+                    self.verts.append([float(vi) for vi in line[2:].split(' ')])
                 elif line[0] == 'f':
-                    self.faces.append([int(fi) - 1 for fi in line[2:].split(sep=' ')])
+                    self.faces.append([int(fi) - 1 for fi in line[2:].split(' ')])
                 else:
                     pass
 
@@ -64,8 +64,54 @@ class Mesh:
         mesh = trimesh.Trimesh(vertices=self.verts, faces=self.faces)
         mesh.show(resolution=(512, 512))
 
-    def render_silhouette(self, dim=(256, 256), padding=0.15, morph_mask=None, show=True, title="silhouette"):
-        """ Create a silhouette out of a 2D slice of the pointcloud """
+    def render_silhouette(self, dim=(256, 256), cam_zdist=1, morph_mask=None, show=True, title="silhouette"):
+        """ Render silhouette by projecting (taking account of perspective) the point cloud """
+        # Define the scale factors
+        x_sf = dim[0] - 1
+        y_sf = dim[1] - 1
+
+        # Collapse the points onto the x-y plane by dropping the z-coordinate, adjusting for the camera position (in distance in z-coordinate from projective plane)
+        verts = copy(self.verts)
+        verts_z = verts[:, 2]
+        mesh_slice = verts[:, :2]
+
+        mesh_slice[:, 0] *= x_sf/verts_z * cam_zdist
+        mesh_slice[:, 1] *= y_sf/verts_z * cam_zdist
+
+        coords = np.round(mesh_slice).astype("uint8")
+
+        # Create background to project silhouette on
+        image = np.ones(shape=dim, dtype="uint8")
+        for coord in coords:
+            # Fill in values with a silhouette coordinate on them
+            x = coord[1]
+            y = coord[0]
+
+            if x <= x_sf and y <= y_sf:
+                # Only show the silhouette if it is visible
+                image[x, y] = 0
+
+        if morph_mask is not None:
+            # Optionally apply a morphological closing operation to fill in the silhouette
+            if morph_mask == "default":
+                # Use a circular mask as the default operator
+                morph_mask = np.array([[0.34, 0.34, 0.34],
+                                       [0.34, 1.00, 0.34],
+                                       [0.34, 0.34, 0.34]
+                                       ])
+            image = np.invert(image.astype(bool))
+            image = np.invert(binary_closing(image, structure=morph_mask, iterations=2)).astype(np.uint8)
+            image *= 255
+
+        if show:
+            plt.imshow(image, cmap="gray")
+            plt.title(title)
+            plt.show()
+
+        return image
+
+    def render_silhouette_orth(self, dim=(256, 256), padding=0.15, morph_mask=None, show=True, title="silhouette"):
+        """ Create a(n orthographic) silhouette out of a 2D slice of the pointcloud """
         # Define the scale factors and padding
         x_sf = dim[0] - 1
         y_sf = dim[1] - 1

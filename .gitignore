@@ -1,3 +1,6 @@
+# Sensitive directories
+keras_rotationnet_v2_demo_for_hidde/
+
 # Data and visualisations
 data/
 *_visualisations/

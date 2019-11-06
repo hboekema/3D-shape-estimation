@@ -1,7 +1,10 @@
 import numpy as np
-import pickle
-from queue import Queue
+#import pickle
+from Queue import Queue
 from datetime import datetime
+import sys
+sys.path.append("/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/")
+from smpl_np_rot_v6 import load_params
 
 
 class SMPLModel():
@@ -15,8 +18,11 @@ class SMPLModel():
     `preprocess.py`.
 
     """
-    with open(model_path, 'rb') as f:
-      params = pickle.load(f)
+    #with open(model_path, 'rb') as f:
+    #  params = pickle.load(f, encoding="bytes")
+      #params = pickle.load(f)
+    if True:
+      params = load_params(model_path)
 
       self.J_regressor = params['J_regressor']
       self.weights = params['weights']

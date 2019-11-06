@@ -1,71 +1,145 @@
+import sys
 import numpy as np
-import tensorflow.compat.v1 as tf
-from keras.layers import Input, Dense, Flatten, Conv2D, Lambda, Concatenate
+#import tensorflow.compat.v1 as tf
+import tensorflow as tf
+from keras.layers import Input, Dense, Flatten, Conv2D, Lambda, Concatenate, Dropout, BatchNormalization, MaxPooling2D, AveragePooling2D
 from keras.models import Model
 from keras.optimizers import Adam
+from keras.applications.vgg19 import VGG19
 
-from smpl_tf import smpl_model, smpl_model_batched
+sys.path.append('/data/cvfs/hjhb2/projects/mesh_rendering/code/keras_rotationnet_v2_demo_for_hidde/')
+sys.path.append('/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/')
+from points3d import Points3DFromSMPLParams, get_parameters
+from smpl_np_rot_v6 import load_params
+#from smpl_tf import smpl_model, smpl_model_batched
 from render_mesh import Mesh
 
 
-
-class LocEncoder():
-    def __init__(self, input_shape=(256, 256), pc_shape=(6890, 3)):
-        self.input_shape = input_shape
-        self.pc_shape = pc_shape
-
-        self.encoder_model = self.create_encoder(self.input_shape)
-        self.loclearner_model = self.create_loclearner(self.pc_shape)
-
-    def create_encoder(self, input_shape):
-        encoder_inputs, encoder_outputs = EncoderArchitecture(input_shape)
-        encoder_model = Model(inputs=encoder_inputs, outputs=encoder_outputs)
-        encoder_model.summary()
-
-        encoder_model.compile(optimizer=Adam(), loss=['mse', mesh_mse], loss_weights=[1.0, 1.0])
-        return encoder_model
-
-    def create_loclearner(self, input_shape):
-        loclearner_inputs, loclearner_outputs = LoclearnerArchitecture(input_shape)
-        loclearner_model = Model(inputs=loclearner_inputs, outputs=loclearner_outputs)
-        loclearner_model.summary()
-
-        loclearner_model.compile(optimizer=Adam(), loss="mse")
-        return loclearner_model
-
-    def create_locencoder(self):
-        locencoder_input = Input(shape=self.input_shape)
-        encoder_outputs = self.encoder_model(locencoder_input)
-
-        # Location learner compares GT point cloud with predicted point cloud
-        GT_pointcloud = Input(shape=self.pc_shape)
-        loclearner_outputs = self.loclearner_model(encoder_outputs[1], GT_pointcloud)
-
-        locencoder_model = Model(inputs=[locencoder_input, GT_pointcloud], outputs=loclearner_outputs)
-        locencoder_model.summary()
-
-        locencoder_model.compile(optimizer=Adam())
-        return locencoder_model
+#class LocEncoder():
+#    def __init__(self, input_shape=(256, 256), pc_shape=(6890, 3)):
+#        self.input_shape = input_shape
+#        self.pc_shape = pc_shape
+#
+#        self.encoder_model = self.create_encoder(self.input_shape)
+#        self.loclearner_model = self.create_loclearner(self.pc_shape)
+#
+#    def create_encoder(self, input_shape):
+#        encoder_inputs, encoder_outputs = EncoderArchitecture(input_shape)
+#        encoder_model = Model(inputs=encoder_inputs, outputs=encoder_outputs)
+#        encoder_model.summary()
+#
+#        encoder_model.compile(optimizer=Adam(), loss=['mse', mesh_mse], loss_weights=[1.0, 1.0])
+#        return encoder_model
+#
+#    def create_loclearner(self, input_shape):
+#        loclearner_inputs, loclearner_outputs = LoclearnerArchitecture(input_shape)
+#        loclearner_model = Model(inputs=loclearner_inputs, outputs=loclearner_outputs)
+#        loclearner_model.summary()
+#
+#        loclearner_model.compile(optimizer=Adam(), loss="mse")
+#        return loclearner_model
+#
+#    def create_locencoder(self):
+#        locencoder_input = Input(shape=self.input_shape)
+#        encoder_outputs = self.encoder_model(locencoder_input)
+#
+#        # Location learner compares GT point cloud with predicted point cloud
+#        GT_pointcloud = Input(shape=self.pc_shape)
+#        loclearner_outputs = self.loclearner_model(encoder_outputs[1], GT_pointcloud)
+#
+#        locencoder_model = Model(inputs=[locencoder_input, GT_pointcloud], outputs=loclearner_outputs)
+#        locencoder_model.summary()
+#
+#        locencoder_model.compile(optimizer=Adam())
+#        return locencoder_model
 
 
 # Define custom loss function
 def mesh_mse(y_true, y_pred):
     """ Obtain the Euclidean difference between corresponding points in two point clouds """
-    return tf.math.reduce_mean(tf.math.square(tf.add(y_true, tf.negative(y_pred))))
+    return tf.reduce_mean(tf.square(tf.add(y_true, tf.negative(y_pred))))
 
 
 def EncoderArchitecture(input_shape):
     """ Specify the encoder's network architecture """
-    encoder_inputs = [Input(shape=input_shape)]
-    encoder_architecture = Conv2D(32, (3, 3), padding="same", activation="relu")(encoder_inputs[0])
-    encoder_architecture = Flatten()(encoder_architecture)
-    encoder_architecture = Dense(85)(encoder_architecture)
-    encoder_parameters = tf.cast(encoder_architecture, tf.float64)
-    encoder_mesh = Lambda(smpl_model("../model.pkl", encoder_parameters[:, 72:82], encoder_parameters[:, :72],
-                                             encoder_parameters[:, 82:85]), output_shape=(6890, 3))
-    encoder_outputs = [encoder_architecture, encoder_mesh]
+    encoder_inputs = Input(shape=input_shape)
+    #encoder_architecture = encoder_inputs
+    #vgg19 = VGG19(include_top=False, input_shape=input_shape, weights=None)
+    #for layer in vgg19.layers:
+    #    encoder_architecture = layer(encoder_architecture)
 
-    return encoder_inputs, encoder_outputs
+    # Network architecture (VGG19)
+    # Block 1
+    encoder_architecture = Conv2D(64, (3, 3), padding="same", activation="relu")(encoder_inputs)
+    encoder_architecture = Conv2D(64, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 2
+    encoder_architecture = Conv2D(128, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(128, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 3
+    encoder_architecture = Conv2D(256, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(256, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(256, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 4
+    encoder_architecture = Conv2D(256, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(256, (3, 3), activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(256, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 5
+    encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 6
+    encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(512, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(512, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = AveragePooling2D((3, 3))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Dense layers
+    encoder_architecture = Flatten()(encoder_architecture)
+    encoder_architecture = Dense(1024)(encoder_architecture)
+    encoder_architecture = Dropout(0.5)(encoder_architecture)
+    encoder_architecture = Dense(512)(encoder_architecture)
+    encoder_architecture = Dropout(0.5)(encoder_architecture)
+
+    encoder_params = Dense(85, activation="tanh")(encoder_architecture)
+
+    # Load SMPL model and get necessary parameters
+    smpl_params = load_params('./keras_rotationnet_v2_demo_for_hidde//basicModel_f_lbs_10_207_0_v1.0.0.pkl')
+    _, _, input_info = get_parameters()
+    input_betas = Lambda(lambda x: x[:, 72:82])(encoder_params)
+    input_pose_rodrigues = Lambda(lambda x: x[:, 0:72])(encoder_params)
+    input_trans = Lambda(lambda x: x[:, 82:85])(encoder_params)
+
+    encoder_mesh = Points3DFromSMPLParams(input_betas, input_pose_rodrigues, input_trans, smpl_params, input_info)
+    #encoder_layer = Lambda(Points3DFromSMPLParams, output_shape=(6890, 3))
+    #encoder_mesh = encoder_layer([encoder_architecture[:, 72:82], encoder_architecture[:, :72], encoder_architecture[:, 82:85], smpl_params, input_info])
+    #encoder_outputs = [encoder_architecture]#, encoder_mesh]
+    #encoder_outputs = [encoder_architecture, encoder_mesh]
+    #print(encoder_inputs)
+    #exit(1)
+
+    return [encoder_inputs], [encoder_params, encoder_mesh]
 
 
 def LoclearnerArchitecture(input_shape=(6890, 3)):
@@ -82,7 +156,23 @@ def LoclearnerArchitecture(input_shape=(6890, 3)):
 
     return [loclearner_input1, loclearner_input2], loclearner_outputs
 
+def LocEncoderArchitecture(img_shape, mesh_shape=(6890, 3)):
+    """ Localised-learning encoder """
+    encoder_input = Input(shape=img_shape)
+    encoder_architecture = Conv2D(32, (3, 3), padding="same", activation="relu")(encoder_input)
+    encoder_architecture = Flatten()(encoder_architecture)
+    encoder_architecture = Dense(85)(encoder_architecture)
+    encoder_mesh = Points3DFromSMPLParams(encoder_architecture[:, 72:82], encoder_architecture[:, :72], encoder_architecture[:, 82:85], smpl_params)
 
+    loclearner_input = Input(shape=mesh_shape)
+    flattened_input1 = Flatten(loclearner_input)
+    flattened_input2 = Flatten(encoder_mesh)
+
+    concat_inputs = Concatenate()([flattened_input1, flattened_input2])
+    loclearner_architecture = Dense(1024)(concat_inputs)
+    loclearner_output = Dense(3)(loclearner_architecture)
+
+    return [encoder_input, loclearner_input], [encoder_architecture, encoder_mesh, loclearner_output]
 
 
 

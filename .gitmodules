@@ -1,0 +1,3 @@
+[submodule "projects/mesh_rendering/code/SMPL"]
+	path = projects/mesh_rendering/code/SMPL
+	url = https://github.com/CalciferZh/SMPL.git
