@@ -80,7 +80,8 @@ batch_size = params["GENERATOR"]["BATCH_SIZE"]
 epochs = params["MODEL"]["EPOCHS"]
 steps_per_epoch = params["MODEL"]["STEPS_PER_EPOCH"]
 validation_steps = params["MODEL"]["VALIDATION_STEPS"]
-chkpt_period = params["MODEL"]["CHKPT_PERIOD"]
+save_period = params["MODEL"]["SAVE_PERIOD"]
+pred_period = params["MODEL"]["PRED_PERIOD"]
 
 """ Data generation """
 
@@ -88,9 +89,22 @@ chkpt_period = params["MODEL"]["CHKPT_PERIOD"]
 smpl = SMPLModel('./keras_rotationnet_v2_demo_for_hidde/./basicModel_f_lbs_10_207_0_v1.0.0.pkl')
 
 # Load the SMPL data
-train_gen = SilhouetteDataGenerator(train_dir, smpl, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0)
-val_gen = SilhouetteDataGenerator(val_dir, smpl, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0)
-test_gen = SilhouetteDataGenerator(test_dir, smpl, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0, noise=0.0)
+#train_gen = SilhouetteDataGenerator(train_dir, smpl, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0, debug=True)
+#val_gen = SilhouetteDataGenerator(val_dir, smpl, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0, debug=True)
+#test_gen = SilhouetteDataGenerator(test_dir, smpl, batch_size=batch_size, img_dim=silh_dim, frac_randomised=1.0, noise=0.0)
+train_gen = LoadedDataGenerator(train_dir, batch_size=batch_size)
+val_gen = LoadedDataGenerator(val_dir, batch_size=batch_size)
+test_gen = LoadedDataGenerator(test_dir, batch_size=batch_size)
+
+# Get a sample train input for the prediction callback
+X_batch, Y_batch = train_gen.__getitem__(0)
+#print("X_batch shape: " +str(X_batch.shape))
+#print("Y_batch shape: " +str(Y_batch.shape))
+train_sample_x = X_batch[0].reshape(256, 256, 1).astype("float32")
+train_sample_y = np.array(Y_batch[0][0])
+train_sample_pc = np.array(Y_batch[1][0])
+#print("Y sample params shape: " + str(train_sample_y.shape))
+#print("Y sample pc shape: " + str(train_sample_pc.shape))
 
 # Artificial sample data
 sample_pose = 0.65 * (np.random.rand(smpl.pose_shape[0], smpl.pose_shape[1]) - 0.5)
@@ -108,14 +122,19 @@ sample_x /= 255
 
 # Callback functions
 # Create a model checkpoint after every few epochs
+#model_save_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+#    model_dir + "model.{epoch:02d}-{loss:.2f}.hdf5",
+#    monitor='loss', verbose=1, save_best_only=False, mode='auto',
+#    period=save_period, save_weights_only=True)
+
 model_save_checkpoint = tf.keras.callbacks.ModelCheckpoint(
     model_dir + "model.{epoch:02d}-{loss:.2f}.hdf5",
     monitor='loss', verbose=1, save_best_only=False, mode='auto',
-    period=chkpt_period, save_weights_only=True)
+    period=100, save_weights_only=True)
 
 # Predict on sample images at the end of every few epochs
-epoch_pred_cb = PredOnEpochEnd(logs_dir, smpl, x_test=sample_x, y_test=sample_pc,
-                               pred_path=train_vis_dir, period=chkpt_period, visualise=True)
+epoch_pred_cb = PredOnEpochEnd(logs_dir, smpl, x_train=train_sample_x, y_train=train_sample_pc, x_test=sample_x, y_test=sample_pc,
+                               pred_path=train_vis_dir, period=pred_period, visualise=False)
 
 
 # Make model entity
@@ -126,6 +145,7 @@ encoder_model = Model(inputs=encoder_inputs, outputs=encoder_outputs)
 encoder_model.summary()
 
 encoder_model.compile(optimizer=Adam(lr=0.001, decay=0.001), loss=['mse', mesh_mse], loss_weights=[1.0, 1.0])
+#encoder_model.compile(optimizer=Adam(lr=0.001, decay=0.001), loss=['mse', mesh_mse], loss_weights=[1.0, 1.0])
 #encoder_model.compile(optimizer='adam', loss='mse')
 #epoch_pred_cb.set_model(encoder_model)
 
@@ -135,8 +155,8 @@ X_batch, Y_batch = train_gen.__getitem__(0)
 #X_batch_1 = X_batch[0].reshape(1 ,256, 256, 1)
 #Y_batch_1 = Y_batch[0].reshape(1, 85)
 print("X_batch first value: " + str(X_batch.shape))
-print("Y_batch first value: " + str(Y_batch[0].shape))
-print("Y_batch first value: " + str(Y_batch[1].shape))
+print("Y_batch first param value: " + str(Y_batch[0].shape))
+print("Y_batch first pc value: " + str(Y_batch[1].shape))
 #encoder_model.fit(
 #        X_batch,
 #        Y_batch,

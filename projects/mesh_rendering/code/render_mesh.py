@@ -1,13 +1,13 @@
 import os
 import numpy as np
 import matplotlib
+matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from copy import copy
 from PIL import Image, ImageOps
 from scipy.ndimage.morphology import binary_closing
 import trimesh
 
-matplotlib.use("Qt5Agg")
 
 class Mesh:
     def __init__(self, filepath=None, pointcloud=None):
@@ -64,7 +64,7 @@ class Mesh:
         mesh = trimesh.Trimesh(vertices=self.verts, faces=self.faces)
         mesh.show(resolution=(512, 512))
 
-    def render_silhouette(self, dim=(256, 256), cam_zdist=1, morph_mask=None, show=True, title="silhouette"):
+    def render_silhouette_pers(self, dim=(256, 256), cam_zdist=1, morph_mask="default", show=True, title="silhouette"):
         """ Render silhouette by projecting (taking account of perspective) the point cloud """
         # Define the scale factors
         x_sf = dim[0] - 1
@@ -110,7 +110,44 @@ class Mesh:
 
         return image
 
-    def render_silhouette_orth(self, dim=(256, 256), padding=0.15, morph_mask=None, show=True, title="silhouette"):
+    def render_silhouette(self, dim=(256, 256), morph_mask=None, show=True, title="silhouette"):
+        """ Create a(n orthographic) silhouette out of a 2D slice of the pointcloud """
+        x_sf = dim[0] - 1
+        y_sf = dim[1] - 1
+
+        # Collapse the points onto the x-y plane by dropping the z-coordinate
+        verts = copy(self.verts)
+        mesh_slice = verts[:, :2]
+        mesh_slice[:, 0] += 1
+        mesh_slice[:, 1] += 1.2
+        mesh_slice *= np.mean(dim)/2.5
+        coords = np.round(mesh_slice).astype("uint8")
+
+        # Create background to project silhouette on
+        image = np.ones(shape=dim, dtype="uint8")
+        for coord in coords:
+            # Fill in values with a silhouette coordinate on them
+            image[y_sf-coord[1], coord[0]] = 0
+
+        # Finally, perform a morphological closing operation to fill in the silhouette
+        if morph_mask is None:
+            # Use a circular mask as the default operator
+            morph_mask = np.array([[0.34, 0.34, 0.34],
+                                   [0.34, 1.00, 0.34],
+                                   [0.34, 0.34, 0.34]
+                                   ])
+        image = np.invert(image.astype(bool))
+        image = np.invert(binary_closing(image, structure=morph_mask, iterations=2)).astype(np.uint8)
+        image *= 255
+
+        if show:
+            plt.imshow(image, cmap="gray")
+            plt.title(title)
+            plt.show()
+
+        return image
+
+    def render_silhouette_centre(self, dim=(256, 256), padding=0.00, morph_mask=None, show=True, title="silhouette"):
         """ Create a(n orthographic) silhouette out of a 2D slice of the pointcloud """
         # Define the scale factors and padding
         x_sf = dim[0] - 1

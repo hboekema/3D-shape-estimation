@@ -5,7 +5,7 @@ import tensorflow as tf
 from keras.layers import Input, Dense, Flatten, Conv2D, Lambda, Concatenate, Dropout, BatchNormalization, MaxPooling2D, AveragePooling2D
 from keras.models import Model
 from keras.optimizers import Adam
-from keras.applications.vgg19 import VGG19
+from keras.applications.resnet50 import ResNet50
 
 sys.path.append('/data/cvfs/hjhb2/projects/mesh_rendering/code/keras_rotationnet_v2_demo_for_hidde/')
 sys.path.append('/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/')
@@ -54,13 +54,39 @@ from render_mesh import Mesh
 #        return locencoder_model
 
 
-# Define custom loss function
+# Define custom loss functions
 def mesh_mse(y_true, y_pred):
     """ Obtain the Euclidean difference between corresponding points in two point clouds """
     return tf.reduce_mean(tf.square(tf.add(y_true, tf.negative(y_pred))))
 
 
+def localised_loss(y_true, y_pred):
+    """ Loss function to apply to obtain the localised adjustment """
+    #tf.multiply()
+    pass
+
+
 def EncoderArchitecture(input_shape):
+    """ Specify the encoder's network architecture """
+    encoder_inputs = Input(shape=input_shape)
+
+    resnet_model = ResNet50(include_top=False, input_tensor=encoder_inputs, input_shape=input_shape, weights=None)
+    encoder_architecture = Flatten()(resnet_model.outputs[0])
+    encoder_params = Dense(85, activation="tanh")(encoder_architecture)
+
+    # Load SMPL model and get necessary parameters
+    smpl_params = load_params('./keras_rotationnet_v2_demo_for_hidde//basicModel_f_lbs_10_207_0_v1.0.0.pkl')
+    _, _, input_info = get_parameters()
+    input_betas = Lambda(lambda x: x[:, 72:82])(encoder_params)
+    input_pose_rodrigues = Lambda(lambda x: x[:, 0:72])(encoder_params)
+    input_trans = Lambda(lambda x: x[:, 82:85])(encoder_params)
+
+    encoder_mesh = Points3DFromSMPLParams(input_betas, input_pose_rodrigues, input_trans, smpl_params, input_info)
+
+    return [encoder_inputs], [encoder_params, encoder_mesh]
+
+
+def CustomEncoderArchitecture(input_shape):
     """ Specify the encoder's network architecture """
     encoder_inputs = Input(shape=input_shape)
     #encoder_architecture = encoder_inputs
@@ -142,27 +168,78 @@ def EncoderArchitecture(input_shape):
     return [encoder_inputs], [encoder_params, encoder_mesh]
 
 
-def LoclearnerArchitecture(input_shape=(6890, 3)):
-    """ Build architecure for localised learning network """
-    loclearner_input1 = Input(shape=input_shape)
-    loclearner_input2 = Input(shape=input_shape)
-    flattened_input1 = Flatten(loclearner_input1)
-    flattened_input2 = Flatten(loclearner_input2)
-
-    concat_inputs = Concatenate()([flattened_input1, flattened_input2])
-
-    loclearner_architecture = Dense(1024)(concat_inputs)
-    loclearner_outputs = [Dense(3)(loclearner_architecture)]
-
-    return [loclearner_input1, loclearner_input2], loclearner_outputs
-
 def LocEncoderArchitecture(img_shape, mesh_shape=(6890, 3)):
     """ Localised-learning encoder """
-    encoder_input = Input(shape=img_shape)
-    encoder_architecture = Conv2D(32, (3, 3), padding="same", activation="relu")(encoder_input)
+    encoder_inputs = Input(shape=input_shape)
+    #encoder_architecture = encoder_inputs
+    #vgg19 = VGG19(include_top=False, input_shape=input_shape, weights=None)
+    #for layer in vgg19.layers:
+    #    encoder_architecture = layer(encoder_architecture)
+
+    # Network architecture (VGG19)
+    # Block 1
+    encoder_architecture = Conv2D(64, (3, 3), padding="same", activation="relu")(encoder_inputs)
+    encoder_architecture = Conv2D(64, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 2
+    encoder_architecture = Conv2D(128, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(128, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 3
+    encoder_architecture = Conv2D(256, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(256, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(256, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 4
+    encoder_architecture = Conv2D(256, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(256, (3, 3), activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(256, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 5
+    encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = MaxPooling2D((2, 2))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Block 6
+    encoder_architecture = Conv2D(512, (3, 3), activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(512, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    #encoder_architecture = Conv2D(512, (3, 3), padding="same", activation="relu")(encoder_architecture)
+    encoder_architecture = BatchNormalization()(encoder_architecture)
+    encoder_architecture = AveragePooling2D((3, 3))(encoder_architecture)
+    encoder_architecture = Dropout(0.25)(encoder_architecture)
+
+    # Dense layers
     encoder_architecture = Flatten()(encoder_architecture)
-    encoder_architecture = Dense(85)(encoder_architecture)
-    encoder_mesh = Points3DFromSMPLParams(encoder_architecture[:, 72:82], encoder_architecture[:, :72], encoder_architecture[:, 82:85], smpl_params)
+    encoder_architecture = Dense(1024)(encoder_architecture)
+    encoder_architecture = Dropout(0.5)(encoder_architecture)
+    encoder_architecture = Dense(512)(encoder_architecture)
+    encoder_architecture = Dropout(0.5)(encoder_architecture)
+
+    encoder_params = Dense(85, activation="tanh")(encoder_architecture)
+
+    # Load SMPL model and get necessary parameters
+    smpl_params = load_params('./keras_rotationnet_v2_demo_for_hidde//basicModel_f_lbs_10_207_0_v1.0.0.pkl')
+    _, _, input_info = get_parameters()
+    input_betas = Lambda(lambda x: x[:, 72:82])(encoder_params)
+    input_pose_rodrigues = Lambda(lambda x: x[:, 0:72])(encoder_params)
+    input_trans = Lambda(lambda x: x[:, 82:85])(encoder_params)
+
+    encoder_mesh = Points3DFromSMPLParams(input_betas, input_pose_rodrigues, input_trans, smpl_params, input_info)
 
     loclearner_input = Input(shape=mesh_shape)
     flattened_input1 = Flatten(loclearner_input)
@@ -172,7 +249,10 @@ def LocEncoderArchitecture(img_shape, mesh_shape=(6890, 3)):
     loclearner_architecture = Dense(1024)(concat_inputs)
     loclearner_output = Dense(3)(loclearner_architecture)
 
-    return [encoder_input, loclearner_input], [encoder_architecture, encoder_mesh, loclearner_output]
+    # Prevent model from using the loclearner gradient
+    loclearner_output_NOGRAD = Lambda(lambda x: K.stop_gradient(x), name='loclearner_output__NOGRAD')(loclearner_output)
+
+    return [encoder_input, loclearner_input], [encoder_architecture, encoder_mesh, loclearner_output_NOGRAD]
 
 
 

@@ -1,6 +1,6 @@
 {
   "ENV": {
-    "CUDA_VISIBLE_DEVICES": "6",
+    "CUDA_VISIBLE_DEVICES": "3",
     "CHANNEL_FORMAT": "channels_last",
     "USE_MULTIPROCESSING" : true,
     "WORKERS" : 6,
@@ -22,15 +22,15 @@
   },
 
   "GENERATOR" : {
-    "BATCH_SIZE" : 20,
+    "BATCH_SIZE" : 10,
     "SHUFFLE" : true
   },
 
   "MODEL" : {
-    "EPOCHS" : 2000,
-    "STEPS_PER_EPOCH": 50,
-    "VALIDATION_STEPS": 10,
-    "SAVE_PERIOD": 100,
+    "EPOCHS" : 1,
+    "STEPS_PER_EPOCH": 1,
+    "VALIDATION_STEPS": 1,
+    "SAVE_PERIOD": 5,
     "PRED_PERIOD": 1,
     "ARCHITECTURE" : {"ENCODER" : "", "DECODER" : ""},
     "LOSS_INFO" : {"LOSS_WEIGHTS" : [1.0], "LOSSES" : ["mean_squared_error"]},

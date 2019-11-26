@@ -8,6 +8,9 @@ data/
 # Meshes
 *.obj
 
+# Images
+*.png
+
 # Models
 models/
 
