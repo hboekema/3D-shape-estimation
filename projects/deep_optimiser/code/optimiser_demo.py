@@ -37,9 +37,7 @@ if args.data is None:
 np.random.seed(10)
 
 # Experiment directory
-#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-14_15:27:34/"
-#model_name = "model.2299-1689.94.hdf5"
-exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-15_09:06:35/"
+exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/2019-12-15_09:06:35/"
 model_name = "model.15499-561.11.hdf5"
 
 model = exp_dir + "models/" + model_name
