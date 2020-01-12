@@ -110,47 +110,6 @@ class Mesh:
 
         return image
 
-    def render_silhouette_proj_matrix(self, dim=(256, 256), morph_mask=None, show=True, title="silhouette"):
-        """ Create a(n orthographic) silhouette out of a 2D slice of the pointcloud """
-        x_max = 5.0
-        y_max = 5.0
-        near = 2.0
-        far = 5.0
-        proj_matrix = [
-                [1./x_max, 0.0, 0.0, 0.0],
-                [0.0, 1./y_max, 0.0, 0.0],
-                [0.0, 0.0, 1./(near - far), near/(near - far)],
-                #[0.0, 0.0, 0.0, 1.0]
-                ]
-
-        verts = copy(self.verts)
-        #coords = [np.dot(proj_matrix, vert.append(1.0)) for vert in verts]
-        coords = [np.dot(proj_matrix, vert) for vert in verts]
-
-        # Create background to project silhouette on
-        image = np.ones(shape=dim, dtype="uint8")
-        for coord in coords:
-            # Fill in values with a silhouette coordinate on them
-            image[y_sf-coord[1], coord[0]] = 0
-
-        # Finally, perform a morphological closing operation to fill in the silhouette
-        if morph_mask is None:
-            # Use a circular mask as the default operator
-            morph_mask = np.array([[0.34, 0.34, 0.34],
-                                   [0.34, 1.00, 0.34],
-                                   [0.34, 0.34, 0.34]
-                                   ])
-        image = np.invert(image.astype(bool))
-        image = np.invert(binary_closing(image, structure=morph_mask, iterations=2)).astype(np.uint8)
-        image *= 255
-
-        if show:
-            plt.imshow(image, cmap="gray")
-            plt.title(title)
-            plt.show()
-
-        return image
-
     def render_silhouette(self, dim=(256, 256), morph_mask=None, show=True, title="silhouette"):
         """ Create a(n orthographic) silhouette out of a 2D slice of the pointcloud """
         x_sf = dim[0] - 1
@@ -275,4 +234,4 @@ if __name__ == "__main__":
     for obj_path in obj_paths:
         mesh = Mesh(os.path.join(mesh_dir, obj_path))
         mesh.render_silhouette()
-    #    mesh.render3D()
+        mesh.render3D()

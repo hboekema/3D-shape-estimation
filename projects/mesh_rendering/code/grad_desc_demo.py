@@ -38,7 +38,7 @@ if args.data is None:
 np.random.seed(10)
 
 # Experiment directory
-learning_rates = [0.075, 0.05, 0.025, 0.01, 0.0075, 0.005, 0.0025]
+learning_rates = [0.1, 0.075, 0.05, 0.025, 0.01, 0.0075, 0.005, 0.0025, 0.001, 0.0001]
 
 #exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-11-23_10:28:25/"
 #model = exp_dir + "models/" + "model.249-66.87.hdf5"
@@ -55,10 +55,14 @@ os.system('mkdir ' + test_vis_dir)
 control_dir = exp_dir + "test_vis/" + "control/"
 os.system('mkdir ' + control_dir)
 control_dir_lrs = []
+logs_dir_lrs =[]
 for lr in learning_rates:
     control_dir_lrs.append(control_dir + "lr_"  + str(lr) + "/")
+    logs_dir_lrs.append(control_logs_dir + "lr_" + str(lr) + "/")
 for control_dir_lr in control_dir_lrs:
     os.system('mkdir ' + control_dir_lr)
+for logs_dir_lr in logs_dir_lrs:
+    os.system("mkdir " + logs_dir_lr)
 
 
 # Generate the data from the SMPL parameters
@@ -71,9 +75,18 @@ base_pc = smpl.set_params(beta=base_params[72:82], pose=base_params[0:72].reshap
 
 
 data_samples = 10000
+#index_samples = 5
+#X_indices = np.array([i % index_samples for i in range(data_samples)])
 X_indices = np.array([i for i in range(data_samples)])
+#X_params_base = 0.2 * np.random.rand(index_samples, 85)
+#X_params = np.array([X_params_base[i % index_samples] for i in range(data_samples)])
 X_params = 0.2 * np.random.rand(data_samples, 85)
 #X_params = np.array([zero_params for i in range(data_samples)], dtype="float64")
+#base_offset = 2 * np.pi * (np.random.rand(index_samples, 3) - 0.5)
+#X_params[:, 1] = np.array([base_offset[i % index_samples, 0] for i in range(data_samples)])
+#X_params[:, 56] = np.array([base_offset[i % index_samples, 1] for i in range(data_samples)])
+#X_params[:, 59] = np.array([base_offset[i % index_samples, 2] for i in range(data_samples)])
+
 X_params[:, 1] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 X_params[:, 56] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 X_params[:, 59] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
@@ -94,7 +107,7 @@ x_test = X_data
 y_test = Y_data
 
 # Render silhouettes for the callback data
-num_samples = 20
+num_samples = 5
 cb_indices = X_indices[:num_samples]
 cb_params = X_params[:num_samples]
 cb_pcs = X_pcs[:num_samples]
@@ -104,54 +117,62 @@ for pc in cb_pcs:
     silh = Mesh(pointcloud=pc).render_silhouette(show=False)
     silh_cb.append(silh)
 
-# Initialise the embedding layer
-def emb_init_weights(emb_params):
-    def emb_init_wrapper(param, offset=False):
-        def emb_init(shape, dtype="float32"):
-            """ Initializer for the embedding layer """
-            emb_params_ = emb_params[:, param]
 
-            if offset:
-                k = np.pi
-                #k = 1.0
-                offset_ = k * 2 * (np.random.rand(shape[0]) - 0.5)
-                emb_params_[:] += offset_
+def model_setup():
+    # Initialise the embedding layer
+    def emb_init_weights(emb_params):
+        def emb_init_wrapper(param, offset=False):
+            def emb_init(shape, dtype="float32"):
+                """ Initializer for the embedding layer """
+                emb_params_ = emb_params[:, param]
 
-            init = np.array(emb_params_, dtype=dtype).reshape(shape)
-            #print("init shape: " + str(init.shape))
-            #print("init values: " + str(init))
-            #exit(1)
-            return init
-        return emb_init
-    return emb_init_wrapper
+                if offset:
+                    k = np.pi
+                    #k = 1.0
+                    offset_ = k * 2 * (np.random.rand(shape[0]) - 0.5)
+                    emb_params_[:] += offset_
 
-emb_initialiser = emb_init_weights(X_params)
-param_ids = ["param_{:02d}".format(i) for i in range(85)]
-trainable_params = ["param_01", "param_56", "param_59"]
-param_trainable = { param: (param in trainable_params) for param in param_ids }
+                init = np.array(emb_params_, dtype=dtype).reshape(shape)
+                #print("init shape: " + str(init.shape))
+                #print("init values: " + str(init))
+                #exit(1)
+                return init
+            return emb_init
+        return emb_init_wrapper
 
-# Load model
-optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
-#input_indices = [0, 2]
-#output_indices = [0, 2, 3, 5]
-#optlearner_model = Model(inputs=[input_ for i, input_ in enumerate(optlearner_inputs) if i in input_indices], outputs=[output for i, output in enumerate(optlearner_outputs) if i in output_indices])
-optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)
-optlearner_model.load_weights(model)
+    emb_initialiser = emb_init_weights(X_params)
+    param_ids = ["param_{:02d}".format(i) for i in range(85)]
+    trainable_params = ["param_01", "param_56", "param_59"]
+    param_trainable = { param: (param in trainable_params) for param in param_ids }
 
-# Freeze all layers except for the required embedding layers
-trainable_layers_names = [param_layer for param_layer, trainable in param_trainable.items() if trainable]
-trainable_layers = {optlearner_model.get_layer(layer_name): int(layer_name[6:8]) for layer_name in trainable_layers_names}
-for layer in optlearner_model.layers:
-    if layer.name not in trainable_layers_names:
-        layer.trainable = False
+    # Load model
+    optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+    #input_indices = [0, 2]
+    #output_indices = [0, 2, 3, 5]
+    #optlearner_model = Model(inputs=[input_ for i, input_ in enumerate(optlearner_inputs) if i in input_indices], outputs=[output for i, output in enumerate(optlearner_outputs) if i in output_indices])
+    optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)
+    optlearner_model.load_weights(model)
+
+    # Freeze all layers except for the required embedding layers
+    trainable_layers_names = [param_layer for param_layer, trainable in param_trainable.items() if trainable]
+    trainable_layers = {optlearner_model.get_layer(layer_name): int(layer_name[6:8]) for layer_name in trainable_layers_names}
+    for layer in optlearner_model.layers:
+        if layer.name not in trainable_layers_names:
+            layer.trainable = False
 
 
-# Set the weights of the embedding layer
-for layer_name, trainable in param_trainable.items():
-    emb_layer = optlearner_model.get_layer(layer_name)
-    emb_init_ = emb_initialiser(param=int(layer_name[6:8]), offset=trainable)
-    emb_layer.set_weights(emb_init_(shape=(data_samples, 1)).reshape(1, data_samples, 1))
-    #print(np.array(emb_layer.get_weights()).shape)
+    # Set the weights of the embedding layer
+    layer_init = {}
+    for layer_name, trainable in param_trainable.items():
+        emb_layer = optlearner_model.get_layer(layer_name)
+        emb_init_ = emb_initialiser(param=int(layer_name[6:8]), offset=trainable)
+        emb_layer.set_weights(emb_init_(shape=(data_samples, 1)).reshape(1, data_samples, 1))
+        #print(np.array(emb_layer.get_weights()).shape)
+        layer_init[layer_name] = emb_layer.get_weights()
+
+    return optlearner_model, trainable_layers, trainable_params, layer_init
+
+optlearner_model, trainable_layers, trainable_params, layer_init = model_setup()
 
 # Compile the model
 #learning_rate = 0.01
@@ -218,10 +239,16 @@ if __name__ == "__main__":
     #learned_optimizer(optlearner_model, lr=0.5)
 
     for i, learning_rate in enumerate(learning_rates):
+        # initialise the weights so that the initialisation is the same for each lr
+        for layer_name, layer_weights in layer_init.items():
+            optlearner_model.get_layer(layer_name).set_weights(layer_weights)
+
         optimizer = Adam(lr=learning_rate, decay=0.0)
         #optimizer = SGD(learning_rate, momentum=0.0, nesterov=False)
         optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss, false_loss, false_loss, false_loss, no_loss, no_loss, no_loss],
-                loss_weights=[0.0, 0.0, 0.0,
+                loss_weights=[0.0,
+                    1.0,  # delta_d loss weight
+                    0.0,
                     1.0,  # pc loss weight
                     0.0,  # smpl loss weight
                     0.0, 0.0, 0.0, 0.0])
@@ -231,7 +258,7 @@ if __name__ == "__main__":
 
         # Visualisation callback
         #epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=test_vis_dir, period=1, trainable_params=trainable_params, visualise=False)
-        epoch_pred_cb_control = OptLearnerPredOnEpochEnd(control_logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=control_dir_lrs[i], period=1, trainable_params=trainable_params,visualise=False)
+        epoch_pred_cb_control = OptLearnerPredOnEpochEnd(logs_dir_lrs[i], smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=control_dir_lrs[i], period=1, trainable_params=trainable_params,visualise=False)
         regular_optimizer(optlearner_model, epochs=50)
 
     exit(1)

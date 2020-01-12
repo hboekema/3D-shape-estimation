@@ -16,7 +16,7 @@ import tensorflow as tf
 import pickle
 
 #from locoptlearner import optlearnerArchitecture, mesh_mse
-from optlearner import OptLearnerMeshNormalStaticArchitecture, OptLearnerStaticArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerArchitecture, OptLearnerDistArchitecture, false_loss, no_loss
+from optlearner import OptLearnerMeshNormalStaticArchitecture, OptLearnerMeshNormalStaticSinArchitecture, OptLearnerStaticArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerArchitecture, OptLearnerDistArchitecture, false_loss, no_loss
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 from callbacks import PredOnEpochEnd, OptLearnerPredOnEpochEnd
@@ -63,7 +63,8 @@ os.mkdir(test_vis_dir)
 # Set number of GPUs to use
 #os.environ["CUDA_VISIBLE_DEVICES"] = "6"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
 #os.environ["CUDA_VISIBLE_DEVICES"] = "5"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
 print("gpu used:|" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
 #exit(1)
 
@@ -95,11 +96,12 @@ pred_period = params["MODEL"]["PRED_PERIOD"]
 np.random.seed(10)
 
 param_ids = ["param_{:02d}".format(i) for i in range(85)]
-not_trainable = [0, 1, 2]
-trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 70]
-trainable_params = [param_ids[index] for index in trainable_params_indices]
+#not_trainable = [0, 1, 2]
+#trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 70]
+#trainable_params = [param_ids[index] for index in trainable_params_indices]
+
 #trainable_params = ["param_00", "param_01", "param_02", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61"]
-#trainable_params = ["param_01", "param_59", "param_56"]
+trainable_params = ["param_01", "param_59", "param_56"]
 #trainable_params = ["param_59", "param_56"]
 param_trainable = { param: (param in trainable_params) for param in param_ids }
 # Generate the data from the SMPL parameters
@@ -124,7 +126,7 @@ X_params[:, 59] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 60] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 61] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 0] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-#X_params[:, 1] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+X_params[:, 1] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 2] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_pcs = np.array([zero_pc for i in range(data_samples)], dtype="float64")
 #X_params = np.array([base_params for i in range(data_samples)], dtype="float32")
@@ -137,7 +139,8 @@ for params in X_params:
     X_pcs.append(pc)
 X_pcs = np.array(X_pcs)
 X_data = [np.array(X_indices), np.array(X_params), np.array(X_pcs)]
-Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85))]
+#Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85))]
+Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85))]
 
 # Render silhouettes for the callback data
 num_samples = 5
@@ -190,7 +193,8 @@ epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, trai
 # Build and compile the model
 #optlearner_inputs, optlearner_outputs = OptLearnerExtraOutputArchitecture()
 #optlearner_inputs, optlearner_outputs = OptLearnerDistArchitecture(embedding_initializer)
-optlearner_inputs, optlearner_outputs = OptLearnerMeshNormalStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+#optlearner_inputs, optlearner_outputs = OptLearnerMeshNormalStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+optlearner_inputs, optlearner_outputs = OptLearnerMeshNormalStaticSinArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
 print("optlearner inputs " +str(optlearner_inputs))
 print("optlearner outputs "+str(optlearner_outputs))
 optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)
@@ -199,12 +203,21 @@ optlearner_model.summary()
 learning_rate = 0.001 #0.001
 optimizer= Adam(lr=learning_rate, decay=0.0001, clipvalue=100.0)
 #optimizer= SGD(lr=learning_rate)
-optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss, false_loss, false_loss,
+#optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss, false_loss, false_loss,
+#						   false_loss, #no_loss, #false_loss,  #this is the loss which updates smpl parameter inputs with predicted gradient
+#						   no_loss, no_loss, no_loss],
+#                                            loss_weights=[0.0, 0.0, 0.0,
+#                                                        1.0*1.0, # point cloud loss
+#                                                        1.0*10, # delta_d_hat loss
+#                                                        0.0, # this is the loss which updates smpl parameter inputs with predicted gradient
+#                                                        0.0, 0.0, 0.0])
+optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss, false_loss, false_loss, false_loss,
 						   false_loss, #no_loss, #false_loss,  #this is the loss which updates smpl parameter inputs with predicted gradient
 						   no_loss, no_loss, no_loss],
                                             loss_weights=[0.0, 0.0, 0.0,
                                                         1.0*1.0, # point cloud loss
-                                                        1.0*10, # delta_d_hat loss
+                                                        0.0*10, # delta_d_hat loss
+                                                        1.0*10, # delta_d_hat sin loss
                                                         0.0, # this is the loss which updates smpl parameter inputs with predicted gradient
                                                         0.0, 0.0, 0.0])
 

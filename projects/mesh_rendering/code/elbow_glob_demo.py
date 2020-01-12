@@ -15,7 +15,7 @@ import copy
 
 from callbacks import OptLearnerPredOnEpochEnd
 from silhouette_generator import OptLearnerDataGenerator, OptLearnerExtraOutputDataGenerator
-from optlearner import OptLearnerStaticArchitecture, OptLearnerArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerDistArchitecture, no_loss, false_loss
+from optlearner import OptLearnerStaticArchitecture, OptLearnerStaticCosArchitecture, OptLearnerArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerDistArchitecture, no_loss, false_loss
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 
@@ -29,6 +29,7 @@ args = parser.parse_args()
 #info = {'model_weights_path': "../experiments/2019-11-16_10:57:46/models/model.499-0.01.hdf5"}
 # = {'model_weights_path': '../experiments/2019-11-13_11:38:42/models/model.399-0.00.hdf5'}
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 print("GPU used: |" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
 
 if args.data is None:
@@ -39,8 +40,14 @@ np.random.seed(10)
 # Experiment directory
 #exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-14_15:27:34/"
 #model_name = "model.2299-1689.94.hdf5"
-exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-15_09:06:35/"
-model_name = "model.15499-561.11.hdf5"
+#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-15_09:06:35/"
+#model_name = "model.15499-561.11.hdf5"
+#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-10_19:53:34/"
+#model_name = "model.2400-107.61.hdf5"
+#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-11_11:06:14/"
+#model_name = "model.400-14.71.hdf5"
+exp_dir ="/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-11_15:44:21/"
+model_name = "model.100-inf.hdf5"
 
 model = exp_dir + "models/" + model_name
 logs_dir = exp_dir + "logs/" + model_name + "/"
@@ -65,15 +72,15 @@ data_samples = 10000
 X_indices = np.array([i for i in range(data_samples)])
 X_params = 0.2 * np.random.rand(data_samples, 85)
 #X_params = np.array([zero_params for i in range(data_samples)], dtype="float64")
-X_params[:, 0] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 0] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 X_params[:, 1] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 2] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 2] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 X_params[:, 56] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 57] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 58] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 57] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 58] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 X_params[:, 59] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 60] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 61] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 60] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 61] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_pcs = np.array([zero_pc for i in range(data_samples)], dtype="float64")
 #X_params = np.array([base_params for i in range(data_samples)], dtype="float32")
 #X_pcs = np.array([base_pc for i in range(data_samples)], dtype="float32")
@@ -91,7 +98,7 @@ x_test = X_data
 y_test = Y_data
 
 # Render silhouettes for the callback data
-num_samples = 20
+num_samples = 5
 cb_indices = X_indices[:num_samples]
 cb_params = X_params[:num_samples]
 cb_pcs = X_pcs[:num_samples]
@@ -124,11 +131,13 @@ def emb_init_weights(emb_params):
 
 emb_initialiser = emb_init_weights(X_params)
 param_ids = ["param_{:02d}".format(i) for i in range(85)]
-trainable_params = ["param_00", "param_01", "param_02", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61"]
+#trainable_params = ["param_00", "param_01", "param_02", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61"]
+trainable_params = ["param_01", "param_56", "param_59"]
 param_trainable = { param: (param in trainable_params) for param in param_ids }
 
 # Load model
-optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+#optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+optlearner_inputs, optlearner_outputs = OptLearnerStaticCosArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
 #input_indices = [0, 2]
 #output_indices = [0, 2, 3, 5]
 #optlearner_model = Model(inputs=[input_ for i, input_ in enumerate(optlearner_inputs) if i in input_indices], outputs=[output for i, output in enumerate(optlearner_outputs) if i in output_indices])
@@ -158,7 +167,9 @@ optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss
                                                     false_loss,  # pc loss
                                                     false_loss,  # loss that updates smpl parameters
                                                     no_loss, no_loss, no_loss],
-                                                loss_weights=[0.0, 0.0, 0.0,
+                                                loss_weights=[0.0,
+                                                            1.0,  # delta_d loss weight
+                                                            0.0,
                                                             1.0,  # pc loss weight
                                                             0.0,  # smpl loss weight
                                                             0.0, 0.0, 0.0, 0.0])
@@ -172,30 +183,29 @@ epoch_pred_cb_control = OptLearnerPredOnEpochEnd(control_logs_dir, smpl, train_i
 
 
 def learned_optimizer(optlearner_model, epochs=50, lr=0.1):
+    metrics_names = optlearner_model.metrics_names
+    print("metrics_names: " + str(metrics_names))
+    named_scores = {}
     epoch_pred_cb.set_model(optlearner_model)
-    for i in range(epochs):
-	#print('emb layer weights'+str(emb_weights))
+    for epoch in range(epochs):
+        print("Epoch: " + str(epoch + 1))
+        print("----------------------")
+        #print('emb layer weights'+str(emb_weights))
 	#print('shape '+str(emb_weights[0].shape))
 	y_pred = optlearner_model.predict(x_test)
-
-        #epoch_pred_cb.on_epoch_end(i)
-
-        #print("------------------------------------")
-        #num_samples = 3
-        #print("GT SMPL: " + str(x_test[1][:num_samples, 0:3]))
-        #print("Parameters: " + str(y_pred[0][:num_samples, 0:3]))
-        #print("Gradients: " + str(y_pred[5][:num_samples, 0:3]))
-        #print("Delta_d: " + str(y_pred[6][:num_samples, 0:3]))
-        #print("Delta_d_hat: " + str(y_pred[7][:num_samples, 0:3]))
-        #print("Delta_d_hat_NOGRAD: " + str(y_pred[8][:num_samples, 0:3]))
-
-        epoch_pred_cb.on_epoch_end(epoch=i)
 
         for emb_layer, param_num in trainable_layers.items():
 	    emb_weights = emb_layer.get_weights()
             emb_weights += lr * np.array(y_pred[7][:, param_num]).reshape((data_samples, 1))
 	    emb_layer.set_weights(emb_weights)
 
+        # Evaluate model performance
+        scores = optlearner_model.evaluate(x_test, y_test, batch_size=32)
+        for i, score in enumerate(scores):
+            named_scores[metrics_names[i]] = score
+        #print("scores: " + str(scores))
+        #exit(1)
+        epoch_pred_cb.on_epoch_end(epoch=int(epoch), logs=named_scores)
 
 
 

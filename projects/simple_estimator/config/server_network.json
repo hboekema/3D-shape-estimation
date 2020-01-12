@@ -9,11 +9,11 @@
   },
 
   "DATA" : {
-    "SOURCE" : {"TRAINING_IMG" : "/data/cvfs/hjhb2/data/silhouettes/train_img/",
-      "TRAINING_MASKS" : "/data/cvfs/hjhb2/data/silhouettes/train_labels/",
+    "SOURCE" : {"TRAINING_IMG" : "../../../data/silhouettes/train_img/",
+      "TRAINING_MASKS" : "../../../data/silhouettes/train_labels/",
       "VALIDATION_IMG" : ".",
       "VALIDATION_MASKS" : "",
-      "TEST_IMG" : "/data/cvfs/hjhb2/data/silhouettes/test_img/",
+      "TEST_IMG" : "../../../data/silhouettes/test_img/",
       "TEST_MASKS" : ""
     },
     "IMG_INFO" : {"INPUT_WH" : [256, 256], "N_CHANNELS" : 3},
@@ -28,7 +28,7 @@
   },
 
   "MODEL" : {
-    "EPOCHS" : 200,
+    "EPOCHS" : 50,
     "STEPS_PER_EPOCH" : 600,
     "VALIDATION_STEPS" : 100,
     "CHKPT_PERIOD" : 20,

@@ -16,7 +16,7 @@ import tensorflow as tf
 import pickle
 
 #from locoptlearner import optlearnerArchitecture, mesh_mse
-from optlearner import OptLearnerStaticArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerArchitecture, OptLearnerDistArchitecture, false_loss, no_loss
+from optlearner import OptLearnerStaticArchitecture, OptLearnerStaticCosArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerArchitecture, OptLearnerDistArchitecture, false_loss, no_loss
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 from callbacks import PredOnEpochEnd, OptLearnerPredOnEpochEnd
@@ -62,8 +62,9 @@ os.mkdir(test_vis_dir)
 
 # Set number of GPUs to use
 #os.environ["CUDA_VISIBLE_DEVICES"] = "6"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
-#os.environ["CUDA_VISIBLE_DEVICES"] = "5"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
 print("gpu used:|" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
 #exit(1)
 
@@ -104,18 +105,19 @@ base_pc = smpl.set_params(beta=base_params[72:82], pose=base_params[0:72].reshap
 
 
 data_samples = 10000
+#data_samples = 100
 X_indices = np.array([i for i in range(data_samples)])
 X_params = 0.2 * 2*(np.random.rand(data_samples, 85) - 0.5)
 #X_params = np.array([zero_params for i in range(data_samples)], dtype="float64")
 X_params[:, 56] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 57] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 58] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 57] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 58] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 X_params[:, 59] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 60] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 61] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 0] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 60] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 61] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 0] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 X_params[:, 1] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 2] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 2] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_pcs = np.array([zero_pc for i in range(data_samples)], dtype="float64")
 #X_params = np.array([base_params for i in range(data_samples)], dtype="float32")
 #X_pcs = np.array([base_pc for i in range(data_samples)], dtype="float32")
@@ -163,8 +165,8 @@ def emb_init_weights(emb_params):
 
 emb_initialiser = emb_init_weights(X_params)
 param_ids = ["param_{:02d}".format(i) for i in range(85)]
-trainable_params = ["param_00", "param_01", "param_02", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61"]
-#trainable_params = ["param_01", "param_59", "param_56"]
+#trainable_params = ["param_00", "param_01", "param_02", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61"]
+trainable_params = ["param_01", "param_59", "param_56"]
 param_trainable = { param: (param in trainable_params) for param in param_ids }
 
 
@@ -184,6 +186,7 @@ epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, trai
 #optlearner_inputs, optlearner_outputs = OptLearnerExtraOutputArchitecture()
 #optlearner_inputs, optlearner_outputs = OptLearnerDistArchitecture(embedding_initializer)
 optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+optlearner_inputs, optlearner_outputs = OptLearnerStaticCosArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
 print("optlearner inputs " +str(optlearner_inputs))
 print("optlearner outputs "+str(optlearner_outputs))
 optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)

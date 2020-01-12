@@ -17,6 +17,10 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
         # Open the log files
         epoch_log_path = os.path.join(log_path, "losses.txt")
         self.epoch_log = open(epoch_log_path, mode='wt', buffering=1)
+        epoch_param_log_path = os.path.join(log_path, "param_losses.txt")
+        self.param_log = open(epoch_param_log_path, mode='wt', buffering=1)
+        epoch_mesh_log_path = os.path.join(log_path, "mesh_losses.txt")
+        self.mesh_log = open(epoch_mesh_log_path, mode='wt', buffering=1)
 
         delta_d_log_path = os.path.join(log_path, "delta_d.txt")
         os.system("touch " + delta_d_log_path)
@@ -51,7 +55,10 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
         """ Store the model loss and accuracy at the end of every epoch, and store a model prediction on data """
         if logs is not None:
             self.epoch_log.write(json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n')
+            self.param_log.write(json.dumps({'epoch': epoch, 'delta_d_mse_loss': logs['delta_d_mse_loss']}) + '\n')
+            self.mesh_log.write(json.dumps({'epoch': epoch, 'pc_mean_euc_dist_loss': logs['pc_mean_euc_dist_loss']}) + '\n')
 
+        epoch = int(epoch)
         if (epoch + 1) % self.period == 0 or epoch == 0:
             # Predict on all of the given input parameters
             for data_type, data in self.input_data.items():
@@ -74,6 +81,8 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                     #print("Delta_d: " + str(preds[6][:,0:3]))
                     #print("Delta_d_hat: " + str(preds[7][:,0:3]))
 
+#                    print("epoch: " + str(epoch + 1))
+#                    exit(1)
                     self.delta_d_log.write('epoch {:05d}\n'.format(epoch + 1))
                     for parameter in self.trainable_params:
                         param_int = int(parameter[6:])

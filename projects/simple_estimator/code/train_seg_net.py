@@ -11,8 +11,6 @@ import numpy as np
 import segmentation_models as sm
 from keras.callbacks import LambdaCallback, ModelCheckpoint
 from keras.preprocessing.image import ImageDataGenerator
-import matplotlib
-matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 import argparse
 import tensorflow as tf
@@ -94,7 +92,7 @@ batch_size = params["GENERATOR"]["BATCH_SIZE"]
 train_sample = np.array(cv2.cvtColor(cv2.imread(os.path.join(x_train_dir, "human/00001.png")), cv2.COLOR_BGR2RGB),
                         dtype='float32')
 label_sample = np.array(cv2.imread(os.path.join(y_train_dir, "human/00001.png"), cv2.IMREAD_GRAYSCALE), dtype='float32')
-test_sample = np.array(cv2.cvtColor(cv2.imread(os.path.join(x_test_dir, "unknown/VID_20170913_170437489_image_000001.png")),
+test_sample = np.array(cv2.cvtColor(cv2.imread(os.path.join(x_test_dir, "VID_20170913_170437489_image_000001.png")),
                            cv2.COLOR_BGR2RGB), dtype='float32')
 
 train_sample = train_sample.reshape((1, 256, 256, img_n_channels))/255
@@ -291,29 +289,18 @@ model = sm.Unet(BACKBONE, encoder_weights='imagenet', input_shape=(None, None, i
 model.compile('Adam', loss=sm.losses.bce_jaccard_loss, metrics=[sm.metrics.iou_score])
 
 
-print("fitting model...")
-# fit model
+print("Fitting model...")
+# Fit model
 model.fit_generator(
     generator=training_generator,
-    epochs=200,
-    steps_per_epoch=50,
+    epochs=params["MODEL"]["EPOCHS"],
+    steps_per_epoch=params["MODEL"]["STEPS_PER_EPOCH"],
     validation_data=validation_generator,
-    validation_steps=10,
-    callbacks=[PredOnEpochEnd(logs_dir, x_train=train_sample, x_test=test_sample,
+    validation_steps=params["MODEL"]["VALIDATION_STEPS"],
+    callbacks=[PredOnEpochEnd(log_dir, x_train=train_sample, x_test=test_sample,
                               pred_path=train_vis_dir, run_id=run_id), model_save_checkpoint],
-    use_multiprocessing=True
+    use_multiprocessing=params["ENV"]["USE_MULTIPROCESSING"]
 )
-
-#model.fit_generator(
-#    generator=training_generator,
-#    epochs=params["model"]["epochs"],
-#    steps_per_epoch=params["model"]["steps_per_epoch"],
-#    validation_data=validation_generator,
-#    validation_steps=params["model"]["validation_steps"],
-#    callbacks=[predonepochend(log_dir, x_train=train_sample, x_test=test_sample,
-#                              pred_path=train_vis_dir, run_id=run_id), model_save_checkpoint],
-#    use_multiprocessing=params["env"]["use_multiprocessing"]
-#)
 
 # Save the final model's weights
 model.save("../models/final_model[{}].hdf5".format(run_id))
