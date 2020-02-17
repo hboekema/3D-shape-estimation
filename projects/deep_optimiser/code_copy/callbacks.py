@@ -69,8 +69,7 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
         if logs is not None:
             self.epoch_log.write(json.dumps({'epoch': epoch})[:-1] + ", " + json.dumps(logs)[1:] + '\n')
 
-        #if (epoch + 1) % self.period == 0 or epoch == 0 or epoch == -1:
-        if epoch % self.period == 0 or epoch == -1:
+        if (epoch + 1) % self.period == 0 or epoch == 0 or epoch == -1:
             # Predict on all of the given input parameters
             for data_type, data in self.input_data.items():
                 if data[0][0] is not None:
@@ -119,12 +118,10 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                     #print("BLOCK_SIZE " + str(BLOCK_SIZE))
                     BLOCKS = self.examples // BLOCK_SIZE
                     #print("BLOCKS " + str(BLOCKS))
-                    #if (epoch - 1) < 0 or self.testing:
-                    if epoch < 0 or self.testing:
+                    if (epoch - 1) < 0 or self.testing:
                         was_reset = [False, False, False, False, False]
                     else:
-                        #INDEX = (epoch - 1) % self.RESET_PERIOD
-                        INDEX = epoch % self.RESET_PERIOD
+                        INDEX = (epoch - 1) % self.RESET_PERIOD
                         #print("INDEX " + str(INDEX))
                         was_reset = [entry == INDEX for entry in BLOCKS]
                     #print("was_reset " + str(was_reset))

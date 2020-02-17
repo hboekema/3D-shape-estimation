@@ -1,0 +1,11 @@
+{
+    "RESET_PERIOD": 20,
+    
+
+    "ROT_MODE": "ROGRIDUES",
+
+    "MODEL" : { "ARCHITECTURE": "Conv1DFullOptLearnerStaticArchitecture",
+                "EPOCHS": 1000000,
+                ""
+    }
+}

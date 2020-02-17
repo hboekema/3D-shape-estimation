@@ -16,7 +16,7 @@ import tensorflow as tf
 import pickle
 
 #from locoptlearner import optlearnerArchitecture, mesh_mse
-from optlearner import OptLearnerStaticArchitecture, OptLearnerStaticAngleMetricArchitecture, OptLearnerStaticCosArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerArchitecture, OptLearnerDistArchitecture, false_loss, no_loss
+from optlearner import OptLearnerMeshNormalStaticArchitecture, OptLearnerStaticArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerArchitecture, OptLearnerDistArchitecture, false_loss, no_loss
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 from callbacks import PredOnEpochEnd, OptLearnerPredOnEpochEnd
@@ -46,10 +46,10 @@ if args.run_id is not None:
     run_id = args.run_id
 else:
     # Use the current date and time as a run-id
-    run_id = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+    run_id = datetime.now().strftime("mesh_normal_optimiser_%Y-%m-%d_%H:%M:%S")
 
 # Create experiment directory
-exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/" + str(run_id) + "/"
+exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/" + str(run_id) + "/"
 model_dir = exp_dir + "models/"
 logs_dir = exp_dir + "logs/"
 train_vis_dir = exp_dir + "train_vis/"
@@ -62,9 +62,8 @@ os.mkdir(test_vis_dir)
 
 # Set number of GPUs to use
 #os.environ["CUDA_VISIBLE_DEVICES"] = "6"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
-#os.environ["CUDA_VISIBLE_DEVICES"] = "1"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
+#os.environ["CUDA_VISIBLE_DEVICES"] = "5"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  #params["ENV"]["CUDA_VISIBLE_DEVICES"]
 print("gpu used:|" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
 #exit(1)
 
@@ -95,21 +94,29 @@ pred_period = params["MODEL"]["PRED_PERIOD"]
 
 np.random.seed(10)
 
+param_ids = ["param_{:02d}".format(i) for i in range(85)]
+not_trainable = [0, 1, 2]
+trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 70]
+trainable_params = [param_ids[index] for index in trainable_params_indices]
+#trainable_params = ["param_00", "param_01", "param_02", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61"]
+#trainable_params = ["param_01", "param_59", "param_56"]
+#trainable_params = ["param_59", "param_56"]
+param_trainable = { param: (param in trainable_params) for param in param_ids }
 # Generate the data from the SMPL parameters
 smpl = SMPLModel('./keras_rotationnet_v2_demo_for_hidde/basicModel_f_lbs_10_207_0_v1.0.0.pkl')
 zero_params = np.zeros(shape=(85,))
 zero_pc = smpl.set_params(beta=zero_params[72:82], pose=zero_params[0:72].reshape((24,3)), trans=zero_params[82:85])
 #print("zero_pc: " + str(zero_pc))
-base_params = 0.2 * (np.random.rand(85) - 0.5)
-base_pc = smpl.set_params(beta=base_params[72:82], pose=base_params[0:72].reshape((24,3)), trans=base_params[82:85])
+#base_params = 0.2 * (np.random.rand(85) - 0.5)
+#base_pc = smpl.set_params(beta=base_params[72:82], pose=base_params[0:72].reshape((24,3)), trans=base_params[82:85])
 
 
-#data_samples = 10000
 data_samples = 1000
-#data_samples = 100
 X_indices = np.array([i for i in range(data_samples)])
-X_params = 0.2 * 2*(np.random.rand(data_samples, 85) - 0.5)
-#X_params = np.array([zero_params for i in range(data_samples)], dtype="float64")
+#X_params = 0.2 * 2*(np.random.rand(data_samples, 85) - 0.5)
+X_params = np.array([zero_params for i in range(data_samples)], dtype="float64")
+
+
 X_params[:, 56] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 57] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 58] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
@@ -117,7 +124,7 @@ X_params[:, 59] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 60] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 61] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 0] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
-X_params[:, 1] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
+#X_params[:, 1] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_params[:, 2] = 2 * np.pi * (np.random.rand(data_samples) - 0.5)
 #X_pcs = np.array([zero_pc for i in range(data_samples)], dtype="float64")
 #X_params = np.array([base_params for i in range(data_samples)], dtype="float32")
@@ -165,30 +172,25 @@ def emb_init_weights(emb_params):
     return emb_init_wrapper
 
 emb_initialiser = emb_init_weights(X_params)
-param_ids = ["param_{:02d}".format(i) for i in range(85)]
-#trainable_params = ["param_00", "param_01", "param_02", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61"]
-trainable_params = ["param_01", "param_59", "param_56"]
-param_trainable = { param: (param in trainable_params) for param in param_ids }
 
 
 # Callback functions
 # Create a model checkpoint after every few epochs
+SAVE_PERIOD = 100
 model_save_checkpoint = tf.keras.callbacks.ModelCheckpoint(
     model_dir + "model.{epoch:02d}-{loss:.2f}.hdf5",
     monitor='loss', verbose=1, save_best_only=False, mode='auto',
-    period=100, save_weights_only=True)
+    period=SAVE_PERIOD, save_weights_only=True)
 
 # Predict on sample params at the end of every few epochs
-PERIOD = 10
+PERIOD = 25
 epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PERIOD, trainable_params=trainable_params, visualise=False)
 
 
 # Build and compile the model
 #optlearner_inputs, optlearner_outputs = OptLearnerExtraOutputArchitecture()
 #optlearner_inputs, optlearner_outputs = OptLearnerDistArchitecture(embedding_initializer)
-#optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
-optlearner_inputs, optlearner_outputs = OptLearnerStaticAngleMetricArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
-#optlearner_inputs, optlearner_outputs = OptLearnerStaticCosArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+optlearner_inputs, optlearner_outputs = OptLearnerMeshNormalStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
 print("optlearner inputs " +str(optlearner_inputs))
 print("optlearner outputs "+str(optlearner_outputs))
 optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)

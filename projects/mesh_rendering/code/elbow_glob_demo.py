@@ -15,7 +15,7 @@ import copy
 
 from callbacks import OptLearnerPredOnEpochEnd
 from silhouette_generator import OptLearnerDataGenerator, OptLearnerExtraOutputDataGenerator
-from optlearner import OptLearnerStaticArchitecture, OptLearnerStaticCosArchitecture, OptLearnerArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerDistArchitecture, no_loss, false_loss
+from optlearner import OptLearnerStaticArchitecture, OptLearnerStaticAngleMetricArchitecture, OptLearnerStaticCosArchitecture, OptLearnerArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerDistArchitecture, no_loss, false_loss
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 
@@ -40,14 +40,17 @@ np.random.seed(10)
 # Experiment directory
 #exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-14_15:27:34/"
 #model_name = "model.2299-1689.94.hdf5"
-#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-15_09:06:35/"
-#model_name = "model.15499-561.11.hdf5"
+exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-15_09:06:35/"
+model_name = "model.15499-561.11.hdf5"
+#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-15_11:28:45/"
+#model_name = "model.1200-104.60.hdf5"
+#model_name = "model.1400-98.31.hdf5"
 #exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-10_19:53:34/"
 #model_name = "model.2400-107.61.hdf5"
 #exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-11_11:06:14/"
 #model_name = "model.400-14.71.hdf5"
-exp_dir ="/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-11_15:44:21/"
-model_name = "model.100-inf.hdf5"
+#exp_dir ="/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-11_15:44:21/"
+#model_name = "model.100-inf.hdf5"
 
 model = exp_dir + "models/" + model_name
 logs_dir = exp_dir + "logs/" + model_name + "/"
@@ -69,6 +72,7 @@ base_pc = smpl.set_params(beta=base_params[72:82], pose=base_params[0:72].reshap
 
 
 data_samples = 10000
+#data_samples = 1000
 X_indices = np.array([i for i in range(data_samples)])
 X_params = 0.2 * np.random.rand(data_samples, 85)
 #X_params = np.array([zero_params for i in range(data_samples)], dtype="float64")
@@ -136,8 +140,9 @@ trainable_params = ["param_01", "param_56", "param_59"]
 param_trainable = { param: (param in trainable_params) for param in param_ids }
 
 # Load model
-#optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
-optlearner_inputs, optlearner_outputs = OptLearnerStaticCosArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+#optlearner_inputs, optlearner_outputs = OptLearnerStaticAngleMetricArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+#optlearner_inputs, optlearner_outputs = OptLearnerStaticCosArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
 #input_indices = [0, 2]
 #output_indices = [0, 2, 3, 5]
 #optlearner_model = Model(inputs=[input_ for i, input_ in enumerate(optlearner_inputs) if i in input_indices], outputs=[output for i, output in enumerate(optlearner_outputs) if i in output_indices])
@@ -168,7 +173,7 @@ optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss
                                                     false_loss,  # loss that updates smpl parameters
                                                     no_loss, no_loss, no_loss],
                                                 loss_weights=[0.0,
-                                                            1.0,  # delta_d loss weight
+                                                            0.0,  # delta_d loss weight
                                                             0.0,
                                                             1.0,  # pc loss weight
                                                             0.0,  # smpl loss weight
@@ -182,7 +187,7 @@ epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, trai
 epoch_pred_cb_control = OptLearnerPredOnEpochEnd(control_logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=control_dir, period=1, trainable_params=trainable_params,visualise=False)
 
 
-def learned_optimizer(optlearner_model, epochs=50, lr=0.1):
+def learned_optimizer(optlearner_model, epochs=50, lr=0.5):
     metrics_names = optlearner_model.metrics_names
     print("metrics_names: " + str(metrics_names))
     named_scores = {}
@@ -221,7 +226,7 @@ def regular_optimizer(optlearner_model, epochs=50):
 
 
 if __name__ == "__main__":
-    learned_optimizer(optlearner_model, lr=0.5)
+    learned_optimizer(optlearner_model, lr=0.2)
     #regular_optimizer(optlearner_model, epochs=50)
     exit(1)
 

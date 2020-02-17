@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from callbacks import OptLearnerPredOnEpochEnd
 from silhouette_generator import OptLearnerDataGenerator, OptLearnerExtraOutputDataGenerator
-from optlearner import OptLearnerStaticArchitecture, OptLearnerStaticAngleMetricArchitecture, OptLearnerArchitecture, OptLearnerExtraOutputArchitecture, OptLearnerDistArchitecture, no_loss, false_loss
+from optlearner import OptLearnerCombinedStaticModArchitecture, no_loss, false_loss, load_smpl_params
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 
@@ -35,18 +35,16 @@ print("GPU used: |" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
 if args.data is None:
     args.data = "../data/train/"
 
-np.random.seed(10)
+np.random.seed(11)
 
 # Experiment directory
 #learning_rates = [0.1, 0.075, 0.05, 0.025, 0.01, 0.0075, 0.005, 0.0025, 0.001, 0.0001]
 learning_rates = [0.01, 0.1, 0.2, 0.001, 0.0001]
 
-#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-11-23_10:28:25/"
-#model = exp_dir + "models/" + "model.249-66.87.hdf5"
-#exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2019-12-15_09:06:35/"
-#model_name = "model.15499-561.11.hdf5"
-exp_dir = "/data/cvfs/hjhb2/projects/mesh_rendering/experiments/2020-01-15_11:28:45/"
-model_name = "model.1200-104.60.hdf5"
+#exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/mesh_normal_optimiser_2020-01-27_18:02:01/"
+#model_name = "model.2100-0.0350.hdf5"
+exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/mesh_normal_optimiser_2020-01-28_08:31:10/"
+model_name = "model.3850-0.0554.hdf5"
 
 model = exp_dir + "models/" + model_name
 logs_dir = exp_dir + "logs/" + model_name + "/"
@@ -77,8 +75,8 @@ base_params = 0.2 * (np.random.rand(85) - 0.5)
 base_pc = smpl.set_params(beta=base_params[72:82], pose=base_params[0:72].reshape((24,3)), trans=base_params[82:85])
 
 
-#data_samples = 10000
-data_samples = 1000
+data_samples = 10000
+#data_samples = 1000
 #index_samples = 5
 #X_indices = np.array([i % index_samples for i in range(data_samples)])
 X_indices = np.array([i for i in range(data_samples)])
@@ -105,7 +103,9 @@ for params in X_params:
     X_pcs.append(pc)
 X_pcs = np.array(X_pcs)
 X_data = [np.array(X_indices), np.array(X_params), np.array(X_pcs)]
-Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85))]
+#Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85))]
+Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 7))]
+#Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 6))]
 
 x_test = X_data
 y_test = Y_data
@@ -150,8 +150,9 @@ def model_setup():
     param_trainable = { param: (param in trainable_params) for param in param_ids }
 
     # Load model
-    #optlearner_inputs, optlearner_outputs = OptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
-    optlearner_inputs, optlearner_outputs = OptLearnerStaticAngleMetricArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, emb_size=data_samples)
+    smpl_params, input_info, faces = load_smpl_params()
+    #optlearner_inputs, optlearner_outputs = OptLearnerMeshNormalStaticModArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples)
+    optlearner_inputs, optlearner_outputs = OptLearnerCombinedStaticModArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples)
     #input_indices = [0, 2]
     #output_indices = [0, 2, 3, 5]
     #optlearner_model = Model(inputs=[input_ for i, input_ in enumerate(optlearner_inputs) if i in input_indices], outputs=[output for i, output in enumerate(optlearner_outputs) if i in output_indices])
@@ -250,13 +251,18 @@ if __name__ == "__main__":
 
         optimizer = Adam(lr=learning_rate, decay=0.0)
         #optimizer = SGD(learning_rate, momentum=0.0, nesterov=False)
-        optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss, false_loss, false_loss, false_loss, no_loss, no_loss, no_loss],
+        optlearner_model.compile(optimizer=optimizer, loss=[no_loss, false_loss, no_loss, false_loss, false_loss, false_loss, false_loss, no_loss, no_loss, false_loss],
                 loss_weights=[0.0,
-                    1.0,  # delta_d loss weight
+                    0.0,  # delta_d loss weight
                     0.0,
-                    1.0,  # pc loss weight
+                    0.0,  # pc loss weight
+                    0.0,
+                    0.0,
                     0.0,  # smpl loss weight
-                    0.0, 0.0, 0.0, 0.0])
+                    0.0,
+                    0.0,
+                    1.0   # dist_angles loss weight
+                    ])
         # Print model summary
         optlearner_model.summary()
 
