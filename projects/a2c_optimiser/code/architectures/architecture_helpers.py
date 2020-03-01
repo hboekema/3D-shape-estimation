@@ -9,7 +9,7 @@ from keras.optimizers import Adam
 from keras.applications.resnet50 import ResNet50
 from keras.initializers import RandomUniform
 
-sys.path.append('/data/cvfs/hjhb2/projects/deep_optimiser/code/keras_rotationnet_v2_demo_for_hidde/')
+sys.path.append('/data/cvfs/hjhb2/projects/a2c_optimiser/code/keras_rotationnet_v2_demo_for_hidde/')
 sys.path.append('/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/')
 from points3d import Points3DFromSMPLParams, get_parameters
 from smpl_np_rot_v6 import load_params

@@ -1,0 +1,110 @@
+GENERAL:
+    GPU_ID: "0"
+    #GPU_ID: "1"
+    #GPU_ID: "2"
+    #GPU_ID: "3"
+    #GPU_ID: "4"
+    #GPU_ID: "5"
+    #GPU_ID: "6"
+
+BASIC:
+    #RESET_PERIOD: 1000000
+    #RESET_PERIOD: 1000
+    #RESET_PERIOD: 400
+    RESET_PERIOD: 200
+    #RESET_PERIOD: 100
+    #RESET_PERIOD: 50
+    #RESET_PERIOD: 25
+    #RESET_PERIOD: 20
+    #RESET_PERIOD: 10
+    #MODEL_SAVE_PERIOD: 1
+    #MODEL_SAVE_PERIOD: 10
+    MODEL_SAVE_PERIOD: 50
+    #MODEL_SAVE_PERIOD: 500000
+    #PREDICTION_PERIOD: 1
+    PREDICTION_PERIOD: 5
+    #PREDICTION_PERIOD: 10
+    OPTIMISATION_PERIOD: 50
+    #DISTRACTOR: "pi"
+    #DISTRACTOR: 0.0
+    #DISTRACTOR: 0.3
+    #DISTRACTOR: 0.5
+    #DISTRACTOR: {"other": 0.3}
+    #DISTRACTOR: {"param_01": "pi", "other": 0.3}
+    DISTRACTOR: {"param_00": 0.0, "param_01": "pi", "param_02": 0.0, "other": 0.3}
+    #DISTRACTOR: {"param_00": 0.0, "param_01": 0.0, "param_02": 0.0, "other": 0.3}
+    #NUM_SAMPLES: 100
+    #NUM_SAMPLES: 200
+    #NUM_SAMPLES: 1000
+    NUM_SAMPLES: 10000
+    #NUM_SAMPLES: 20000
+    #NUM_SAMPLES: 100000
+    ROT_MODE: "RODRIGUES"
+    #ROT_MODE = "EULER"
+
+DATA:
+    #POSE_OFFSET: 0.0
+    #POSE_OFFSET: {"other": 0.3}
+    POSE_OFFSET: {"param_01": "pi", "other": 0.3}
+    #PARAMS_TO_OFFSET: "trainable_params"
+    PARAMS_TO_OFFSET: "all_pose_and_global_rotation"
+    
+    # Will always result in data being generated instead of loaded
+    USE_GENERATOR: True
+    #USE_GENERATOR: False
+
+    # These data directories will yield Python None when loaded. Use these directories if the data is generated in the train/test script instead of being loaded
+    TRAIN_DATA_DIR:
+    TEST_DATA_DIR:
+    # Data will be loaded and not generated - the POSE_OFFSET and PARAM_TO_OFFSET parameters will be ignored
+    #TRAIN_DATA_DIR: "/data/cvfs/hjhb2/data/artificial/full_y_rot_and_small_pose/train/" 
+    #TEST_DATA_DIR: "/data/cvfs/hjhb2/data/artificial/full_y_rot_and_small_pose/test/"
+
+PARAMS:
+    #TRAINABLE: "all_pose"
+    TRAINABLE: "all_pose_and_global_rotation"
+    #TRAINABLE: ["param_01", "param_29", "param_38",  "param_41",  "param_44", "param_47", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"] 
+    #TRAINABLE: ["param_01", "param_41",  "param_44", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"]
+    #TRAINABLE: ["param_01", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"]
+    #TRAINABLE: ["param_01", "param_50", "param_53", "param_59", "param_56"]
+    #TRAINABLE: ["param_01", "param_14", "param_17", "param_59", "param_56"]
+    #TRAINABLE: ["param_14", "param_17", "param_59", "param_56"]
+    #TRAINABLE: ["param_01", "param_59", "param_56"]
+    #TRAINABLE: ["param_01", "param_59"]
+    #TRAINABLE: ["param_59", "param_56"]
+    #TRAINABLE: ["param_01"]
+    #TRAINABLE: ["param_56"]
+    #TRAINABLE: ["param_59"]
+
+MODEL:
+    #ARCHITECTURE: "OptLearnerMeshNormalsStaticModArchitecture"
+    #ARCHITECTURE: "BasicFCOptLearnerStaticArchitecture"
+    #ARCHITECTURE: "FullOptLearnerStaticArchitecture"
+    #ARCHITECTURE: "Conv1DFullOptLearnerStaticArchitecture"
+    #ARCHITECTURE: "GAPConv1DOptLearnerStaticArchitecture"
+    ARCHITECTURE: "DeepConv1DOptLearnerStaticArchitecture"
+    ARCHITECTURE: "ResConv1DOptLearnerStaticArchitecture"
+    #ARCHITECTURE: "LatentConv1DOptLearnerStaticArchitecture"
+    INPUT_TYPE: "3D_POINTS"
+    #INPUT_TYPE: "MESH_NORMALS"
+    #LEARNING_RATE: 0.005
+    #LEARNING_RATE: 0.002
+    LEARNING_RATE: 0.001
+    #DELTA_D_LOSS_WEIGHT: 500 
+    #DELTA_D_LOSS_WEIGHT: 200
+    DELTA_D_LOSS_WEIGHT: 100
+    #DELTA_D_LOSS_WEIGHT: 0
+    PC_LOSS_WEIGHT: 500
+    #PC_LOSS_WEIGHT: 200
+    #PC_LOSS_WEIGHT: 100
+    #PC_LOSS_WEIGHT: 10
+    DELTA_D_HAT_LOSS_WEIGHT: 1
+    EPOCHS: 1000000 
+    #BATCH_SIZE: 5
+    BATCH_SIZE: 100
+    #BATCH_SIZE: 128
+    #BATCH_SIZE: 1024
+    #BATCH_SIZE: 4096
+
+TEST:
+    test_iterations: 50

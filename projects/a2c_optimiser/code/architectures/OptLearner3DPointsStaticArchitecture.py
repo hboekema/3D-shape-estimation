@@ -18,7 +18,7 @@ from render_mesh import Mesh
 from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights
 
 
-def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
+def OptLearner3DPointsStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000):
     """ Optimised learner network architecture """
     # An embedding layer is required to optimise the parameters
     optlearner_input = Input(shape=(1,), name="embedding_index")
@@ -53,11 +53,7 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     print("delta_d loss shape: " + str(false_loss_delta_d.shape))
 
     # Load SMPL model and get necessary parameters
-    optlearner_pc = get_pc(optlearner_params, smpl_params, input_info, faces)  # UNCOMMENT
-    print("optlearner_pc shape: " + str(optlearner_pc.shape))
-    #exit(1)
-    #optlearner_pc = Dense(6890*3)(delta_d)
-    #optlearner_pc = Reshape((6890, 3))(optlearner_pc)
+    optlearner_pc = get_pc(optlearner_params, smpl_params, input_info, faces)
 
     # Get the (batched) Euclidean loss between the learned and ground truth point clouds
     pc_euclidean_diff = Lambda(lambda x: x[0] -  x[1])([gt_pc, optlearner_pc])
@@ -70,12 +66,10 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     #exit(1)
 
     # Gather sets of points and compute their cross product to get mesh normals
-    # In order of: right hand, right wrist, right forearm, right bicep end, right bicep, right shoulder, top of cranium, left shoulder, left bicep, left bicep end, left forearm, left wrist, left hand,
-    # chest, belly/belly button, back of neck, upper back, central back, lower back/tailbone,
-    # left foot, left over-ankle, left shin, left over-knee, left quadricep, left hip, right, hip, right, quadricep, right over-knee, right shin, right, over-ankle, right foot
-    vertex_list = [5674, 5705, 5039, 5151, 4977, 4198, 411, 606, 1506, 1682, 1571, 2244, 2212,
-            3074, 3500, 460, 2878, 3014, 3021,
-            3365, 4606, 4588, 4671, 6877, 1799, 5262, 3479, 1187, 1102, 1120, 6740]
+    #vertex_list=[1850, 1600, 2050, 1300, 5350, 5050, 5500]
+    #vertex_list=[1850, 1600, 2050, 5350, 5050, 5500]
+    # In order of right wrist, right, bicep, right shoulder, cranium top, left shoulder, left bicep, left wrist
+    vertex_list = [5705, 4977, 4198, 411, 606, 1506, 2244]
     #face_array = np.array([11396, 8620, 7866, 5431, 6460, 1732, 4507])
     pc_euclidean_diff_NOGRAD =  Lambda(lambda x: K.stop_gradient(x))(pc_euclidean_diff) # This is added to avoid influencing embedding layer parameters by a "bad" gradient network
     vertex_diff_NOGRAD = Lambda(lambda x: K.tf.gather(x, np.array(vertex_list).astype(np.int32), axis=-2))(pc_euclidean_diff_NOGRAD)
@@ -106,12 +100,7 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     diff_angles_NOGRAD = Flatten()(diff_angles_NOGRAD)
     mesh_diff_NOGRAD = Concatenate()([diff_normals_NOGRAD, dist_angles_NOGRAD])
 
-    if input_type == "3D_POINTS":
-        optlearner_architecture = Dense(2**9, activation="relu")(vertex_diff_NOGRAD)
-    if input_type == "MESH_NORMALS":
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_norm_NOGRAD)
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_NOGRAD)
-        optlearner_architecture = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
+    optlearner_architecture = Dense(2**11, activation="relu")(vertex_diff_NOGRAD)
     optlearner_architecture = BatchNormalization()(optlearner_architecture)
     optlearner_architecture = Dropout(0.5)(optlearner_architecture)
     #optlearner_architecture = Dropout(0.2)(optlearner_architecture)
@@ -140,7 +129,6 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     false_loss_smpl = Multiply(name="smpl_diff")([optlearner_params, delta_d_hat_NOGRAD])
     print("smpl loss shape: " + str(false_loss_smpl.shape))
 
-    #return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, delta_d_hat_NOGRAD]
     return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles]
 
 

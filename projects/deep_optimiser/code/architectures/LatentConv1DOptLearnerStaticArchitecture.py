@@ -3,11 +3,12 @@ import numpy as np
 #import tensorflow.compat.v1 as tf
 import tensorflow as tf
 import keras.backend as K
-from keras.layers import Input, Dense, Flatten, Conv2D, Lambda, Concatenate, Dropout, BatchNormalization, MaxPooling2D, AveragePooling2D, Embedding, Reshape, Multiply, Add
+from keras.layers import Input, Dense, Flatten, Conv1D, AveragePooling1D, MaxPooling1D, GlobalAveragePooling1D, Lambda, Concatenate, Dropout, BatchNormalization, Embedding, Reshape, Multiply, Add, Subtract
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.applications.resnet50 import ResNet50
 from keras.initializers import RandomUniform
+from keras.regularizers import l1
 
 sys.path.append('/data/cvfs/hjhb2/projects/mesh_rendering/code/keras_rotationnet_v2_demo_for_hidde/')
 sys.path.append('/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/')
@@ -18,7 +19,7 @@ from render_mesh import Mesh
 from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights
 
 
-def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
+def LatentConv1DOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
     """ Optimised learner network architecture """
     # An embedding layer is required to optimise the parameters
     optlearner_input = Input(shape=(1,), name="embedding_index")
@@ -106,15 +107,69 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     diff_angles_NOGRAD = Flatten()(diff_angles_NOGRAD)
     mesh_diff_NOGRAD = Concatenate()([diff_normals_NOGRAD, dist_angles_NOGRAD])
 
+    # Define layers for mapping inputs to a latent space - these layers will have multiple nodes as they should be the same for all inputs
+    latent_hidden_layer = Dense(256, activation="relu")
+    latent_output_layer = Dense(32, activation="linear")
+    #latent_output_layer = Dense(128, activation="linear", activity_regularizer=l1(0.01))
+    #latent_hidden_layer = Dense(128, activation="relu")
+    #latent_output_layer = Dense(64, activation="linear")
+
     if input_type == "3D_POINTS":
-        optlearner_architecture = Dense(2**9, activation="relu")(vertex_diff_NOGRAD)
+        # Cast learned pc to the latent space
+        optlearner_pc_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(optlearner_pc)
+        optlearner_pc_NOGRAD = Lambda(lambda x: x[:,::10,:])(optlearner_pc_NOGRAD)
+        optlearner_pc_flat_NOGRAD = Flatten()(optlearner_pc_NOGRAD)
+        optlearner_hidden_latent = latent_hidden_layer(optlearner_pc_flat_NOGRAD)
+        optlearner_hidden_latent = Dropout(0.5)(optlearner_hidden_latent)
+        optlearner_latent = latent_output_layer(optlearner_hidden_latent)
+
+        # Cast ground truth pc to the latent space
+        gt_pc_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(gt_pc)
+        gt_pc_NOGRAD = Lambda(lambda x: x[:,::10,:])(gt_pc_NOGRAD)
+        gt_pc_flat_NOGRAD = Flatten()(gt_pc_NOGRAD)
+        gt_hidden_latent = latent_hidden_layer(gt_pc_flat_NOGRAD)
+        gt_hidden_latent = Dropout(0.5)(gt_hidden_latent)
+        gt_latent = latent_output_layer(gt_hidden_latent)
+
     if input_type == "MESH_NORMALS":
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_norm_NOGRAD)
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_NOGRAD)
-        optlearner_architecture = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
+        print("No implementation for mesh normals. Exiting.")
+        exit(1)
+#        optlearner_hidden_pc = latent_hidden_layer()
+#        gt_hidden_pc = latent_hidden_layer()
+
+    optlearner_architecture = Subtract()([gt_latent, optlearner_latent])
+    #optlearner_architecture = BatchNormalization()(optlearner_architecture)
+    #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Reshape((optlearner_architecture.shape[1].value, 1))(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
     optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    optlearner_architecture = Dropout(0.5)(optlearner_architecture)
-    #optlearner_architecture = Dropout(0.2)(optlearner_architecture)
+    optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
+    #optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = Conv1D(128, 5, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Conv1D(128, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = BatchNormalization()(optlearner_architecture)
+    #optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = AveragePooling1D(2)(optlearner_architecture)
+    #optlearner_architecture = Conv1D(512, 3, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
+    #optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = GlobalAveragePooling1D()(optlearner_architecture)
+    #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = Flatten()(optlearner_architecture)
+    #conv_shape = int(np.prod(optlearner_architecture.shape[1:]))
+    #optlearner_architecture = Reshape((conv_shape,))(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    #optlearner_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     #delta_d_hat = Dense(85, activation=pos_scaled_tanh, name="delta_d_hat")(optlearner_architecture)
     delta_d_hat = Dense(85, activation="linear", name="delta_d_hat")(optlearner_architecture)
@@ -129,7 +184,8 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     #false_loss_delta_d_hat = Lambda(lambda x: mape(x[0], x[1]))([delta_d_NOGRAD, delta_d_hat])
     false_loss_delta_d_hat = Reshape(target_shape=(1,), name="delta_d_hat_mse")(false_loss_delta_d_hat)
     print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
-    false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
+    #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
+    false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
     false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_sin_loss_delta_d_hat)
     print("delta_d_hat sin loss shape: " + str(false_sin_loss_delta_d_hat.shape))
 
@@ -140,7 +196,6 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     false_loss_smpl = Multiply(name="smpl_diff")([optlearner_params, delta_d_hat_NOGRAD])
     print("smpl loss shape: " + str(false_loss_smpl.shape))
 
-    #return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, delta_d_hat_NOGRAD]
     return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles]
 
 

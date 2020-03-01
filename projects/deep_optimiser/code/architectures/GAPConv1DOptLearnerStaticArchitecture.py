@@ -3,7 +3,7 @@ import numpy as np
 #import tensorflow.compat.v1 as tf
 import tensorflow as tf
 import keras.backend as K
-from keras.layers import Input, Dense, Flatten, Conv2D, Lambda, Concatenate, Dropout, BatchNormalization, MaxPooling2D, AveragePooling2D, Embedding, Reshape, Multiply, Add
+from keras.layers import Input, Dense, Flatten, Conv1D, MaxPooling1D, GlobalAveragePooling1D, Lambda, Concatenate, Dropout, BatchNormalization, Embedding, Reshape, Multiply, Add
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.applications.resnet50 import ResNet50
@@ -18,7 +18,7 @@ from render_mesh import Mesh
 from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights
 
 
-def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
+def GAPConv1DOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
     """ Optimised learner network architecture """
     # An embedding layer is required to optimise the parameters
     optlearner_input = Input(shape=(1,), name="embedding_index")
@@ -114,7 +114,47 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
         optlearner_architecture = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
     optlearner_architecture = BatchNormalization()(optlearner_architecture)
     optlearner_architecture = Dropout(0.5)(optlearner_architecture)
-    #optlearner_architecture = Dropout(0.2)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Reshape((optlearner_architecture.shape[1].value, 1))(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
+    optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
+    optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
+    optlearner_architecture = BatchNormalization()(optlearner_architecture)
+    optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    optlearner_architecture = Conv1D(128, 5, activation="relu")(optlearner_architecture)
+    optlearner_architecture = Conv1D(128, 5, activation="relu")(optlearner_architecture)
+    optlearner_architecture = BatchNormalization()(optlearner_architecture)
+    optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = Conv1D(128, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = BatchNormalization()(optlearner_architecture)
+    optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
+    optlearner_architecture = Conv1D(512, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = Conv1D(512, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = BatchNormalization()(optlearner_architecture)
+    #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    #optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
+    #optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = Conv1D(1024, 3, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = Conv1D(1024, 3, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = BatchNormalization()(optlearner_architecture)
+    #optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = GlobalAveragePooling1D()(optlearner_architecture)
+    #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = Flatten()(optlearner_architecture)
+    #conv_shape = int(np.prod(optlearner_architecture.shape[1:]))
+    #optlearner_architecture = Reshape((conv_shape,))(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    #optlearner_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     #delta_d_hat = Dense(85, activation=pos_scaled_tanh, name="delta_d_hat")(optlearner_architecture)
     delta_d_hat = Dense(85, activation="linear", name="delta_d_hat")(optlearner_architecture)
@@ -129,7 +169,8 @@ def FullOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params,
     #false_loss_delta_d_hat = Lambda(lambda x: mape(x[0], x[1]))([delta_d_NOGRAD, delta_d_hat])
     false_loss_delta_d_hat = Reshape(target_shape=(1,), name="delta_d_hat_mse")(false_loss_delta_d_hat)
     print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
-    false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
+    #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
+    false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
     false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_sin_loss_delta_d_hat)
     print("delta_d_hat sin loss shape: " + str(false_sin_loss_delta_d_hat.shape))
 
