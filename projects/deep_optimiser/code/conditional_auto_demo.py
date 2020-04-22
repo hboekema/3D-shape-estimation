@@ -43,8 +43,8 @@ from keras.backend.tensorflow_backend import set_session
 #os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 #os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 #os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["CUDA_VISIBLE_DEVICES"] = setup_params["GENERAL"]["GPU_ID"]
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+#os.environ["CUDA_VISIBLE_DEVICES"] = setup_params["GENERAL"]["GPU_ID"]
 print("gpu used:|" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
 #exit(1)
 
@@ -342,8 +342,6 @@ elif INPUT_TYPE == "3D_POINTS":
 if ARCHITECTURE == "RotConv1DOptLearnerArchitecture":
     optlearner_loss += [false_loss, false_loss, false_loss, false_loss]
     optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0]
-    #optlearner_loss += [false_loss, false_loss, false_loss, false_loss, false_loss, false_loss]
-    #optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 if ARCHITECTURE == "ProbCNNOptLearnerStaticArchitecture" or ARCHITECTURE == "GatedCNNOptLearnerArchitecture":
     optlearner_loss += [false_loss, false_loss, false_loss]
@@ -374,7 +372,91 @@ for lr_num, lr in enumerate(learning_rates):
     epoch_pred_cbs_control.append(epoch_pred_cb_control)
 
 
-def learned_optimizer(optlearner_model, epochs=50, lr=0.1, cb=epoch_pred_cb, mode="RODRIGUES"):
+def conditional_learned_optimizer(optlearner_model, epochs=50, lr=0.1, cb=epoch_pred_cb):
+    #kinematic_levels = [
+    #        ["param_01"],
+    #        ["param_20", "param_47"],
+    #        ["param_11", "param_44"],
+    #        ["param_05", "param_08", "param_50", "param_53"],
+    #        ["param_14", "param_17", "param_56", "param_59"],
+    #        ["param_23", "param_26", "param_62", "param_65"]
+    #        ]
+
+    joint_levels = [
+            [0],
+            [3],
+            [1,2,6],
+            [4,5,9],
+            [7,8,12,13,14],
+            [15,16,17],
+            [18,19],
+            [20,21],
+            [22,23]
+            ]
+
+    kinematic_levels = []
+    for level in joint_levels:
+        level_list = []
+        for joint in level:
+            j1 = 3*joint
+            j2 = 3*joint + 1
+            j3 = 3*joint + 2
+
+            named_j1 = "param_{:02d}".format(j1)
+            named_j2 = "param_{:02d}".format(j2)
+            named_j3 = "param_{:02d}".format(j3)
+            level_list += [named_j1, named_j2, named_j3]
+        kinematic_levels.append(level_list)
+
+    metrics_names = optlearner_model.metrics_names
+    print("metrics_names: " + str(metrics_names))
+    named_scores = {}
+    output_names = [output.op.name.split("/")[0] for output in optlearner_model.outputs]
+    print("output_names: " + str(output_names))
+    pred_index = output_names.index("delta_d_hat")
+    #print("prediction index: " + str(pred_index))
+
+    cb.set_model(optlearner_model)
+    #layer_names = ["diff_cross_product", "diff_angle_mse"]
+    #intermediate_layer_model = Model(inputs=optlearner_model.input, outputs=[optlearner_model.get_layer(layer_name).output for layer_name in layer_names])
+
+    for epoch in range(epochs):
+        print("Epoch: " + str(epoch + 1))
+        print("----------------------")
+        cb.on_epoch_begin(epoch=int(epoch), logs=named_scores)
+        #print('emb layer weights'+str(emb_weights))
+	#print('shape '+str(emb_weights[0].shape))
+        test_samples = [arr[:num_samples] for arr in x_test]
+        for level in kinematic_levels:
+            y_pred = optlearner_model.predict(test_samples)
+            delta_d_hat = np.zeros((data_samples, 85))
+            delta_d_hat[:num_samples] = y_pred[pred_index]
+
+            # Evaluate the mesh normals
+            #intermediate_output = intermediate_layer_model.predict(x_test)
+            #print("mesh_normals: " + str(intermediate_output[0][:5]))
+            #print("mesh_normals_mse: " + str(intermediate_output[1][:5]))
+
+            for emb_layer, param_num in trainable_layers.items():
+                if "param_{:02d}".format(param_num) in level:
+                    print("Updating param_{:02d}")
+                    emb_weights = emb_layer.get_weights()
+                    #emb_weights += lr * np.array(y_pred[7][:, param_num]).reshape((data_samples, 1))
+                    #emb_weights += lr * np.array(y_pred[8][:, param_num]).reshape((data_samples, 1))
+                    emb_weights += lr * np.array(delta_d_hat[:, param_num]).reshape((data_samples, 1))
+	            emb_layer.set_weights(emb_weights)
+
+            cb.set_model(optlearner_model)
+        # Evaluate model performance
+        #scores = optlearner_model.evaluate(x_test, y_test, batch_size=100)
+        #for i, score in enumerate(scores):
+        #    named_scores[metrics_names[i]] = score
+        #print("scores: " + str(scores))
+        #exit(1)
+        cb.on_epoch_end(epoch=int(epoch), logs=named_scores)
+
+
+def learned_optimizer(optlearner_model, epochs=50, lr=0.1, cb=epoch_pred_cb, mode="JOINT"):
     metrics_names = optlearner_model.metrics_names
     print("metrics_names: " + str(metrics_names))
     named_scores = {}
@@ -434,7 +516,8 @@ def regular_optimizer(optlearner_model, epochs=50):
 if __name__ == "__main__":
     for lr_num, lr in enumerate(learning_rates):
         print("\nTesting for lr '{:02f}'...".format(lr))
-        learned_optimizer(optlearner_model, epochs=TEST_EPOCHS, lr=lr, cb=epoch_pred_cbs[lr_num])
+        #learned_optimizer(optlearner_model, epochs=TEST_EPOCHS, lr=lr, cb=epoch_pred_cbs[lr_num])
+        conditional_learned_optimizer(optlearner_model, epochs=TEST_EPOCHS, lr=lr, cb=epoch_pred_cbs[lr_num])
 
         # Reset the weights of the embedding layer
         for layer_name, trainable in param_trainable.items():

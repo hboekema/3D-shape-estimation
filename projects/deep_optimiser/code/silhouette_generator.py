@@ -7,10 +7,11 @@ import pickle
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 from generate_data import gen_data
+from training_helpers import architecture_output_array
 
 
 class OptLearnerUpdateGenerator(keras.utils.Sequence):
-    def __init__(self, num_samples, reset_period, POSE_OFFSET, PARAMS_TO_OFFSET, batch_size=32, smpl=None, shuffle=True, save_path="./cb_samples.npz"):
+    def __init__(self, num_samples, reset_period, POSE_OFFSET, PARAMS_TO_OFFSET, ARCHITECTURE, batch_size=32, smpl=None, shuffle=True, save_path="./", num_trainable=24, trainable_params_mask=np.zeros((85,))):
         self.num_samples = num_samples
         self.reset_period = reset_period
         if isinstance(POSE_OFFSET, (int, float)):
@@ -20,6 +21,7 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
             k = POSE_OFFSET
         self.k = k
         self.PARAMS_TO_OFFSET = PARAMS_TO_OFFSET
+        self.ARCHITECTURE = ARCHITECTURE
         self.batch_size = batch_size
         if smpl is None:
             smpl = SMPLModel('./keras_rotationnet_v2_demo_for_hidde/basicModel_f_lbs_10_207_0_v1.0.0.pkl')
@@ -28,6 +30,8 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
         self.params, self.pcs = gen_data(POSE_OFFSET, PARAMS_TO_OFFSET, self.smpl, data_samples=num_samples, save_dir=None, render_silhouette=False)
         self.indices = np.array([i for i in range(num_samples)])
         self.save_path = save_path
+        self.num_trainable = num_trainable
+        self.trainable_params_mask = trainable_params_mask
         #print("generator params shape at init: " + str(self.params.shape))
         #print("generator pcs shape at init: " + str(self.pcs.shape))
         print("generator params first entry: " + str(self.params[0]))
@@ -42,29 +46,33 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
 
         # Store initial data
         if self.save_path is not None:
-            with open(self.save_path, 'w') as f:
-                np.savez(f, indices=self.indices[self.cb_samples], params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples])
+            sample_path = self.save_path + "cb_samples_E{}.npz".format(self.epoch - 1)
+            with open(sample_path, 'w') as f:
+                if self.ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+                    mask_to_save = np.tile(self.trainable_params_mask, (len(self.cb_samples), 1))
+                    np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples],\
+                            trainable_params=mask_to_save)
+                else:
+                    np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples])
 
-    def on_epoch_end(self):
-        # NOTE - this function is NOT thread-safe
-        #print("\nEPOCH: " + str(self.epoch) + "\n")
-        # Distract selected base poses
-        # Update a block of parameters
-        #print("Distracting base pose...")
-        if self.epoch >= 0:
+    def update_samples(self, epoch):
+        if epoch >= 0:
             BL_SIZE = self.num_samples // self.reset_period
-            print("epoch: " + str(self.epoch))
+            #print("epoch: " + str(self.epoch))
             BL_INDEX = self.epoch % self.reset_period
-            print("BL_SIZE: " + str(BL_SIZE))
-            print("BL_INDEX: " + str(BL_INDEX))
+            #print("BL_SIZE: " + str(BL_SIZE))
+            #print("BL_INDEX: " + str(BL_INDEX))
 
             params_to_offset = [key for key in self.k.keys() if key in self.PARAMS_TO_OFFSET]
+            #print(self.PARAMS_TO_OFFSET)
             sorted_keys = sorted(params_to_offset, key=lambda x: int(x[6:8]))
             sorted_keys_num = [int(x[6:8]) for x in sorted_keys]
             #print(sorted_keys)
             sorted_offsets = [self.k[key] for key in sorted_keys]
 
+            np.random.seed(epoch)
             weights_new = np.array(1-2*np.random.rand(BL_SIZE, len(sorted_keys_num))) * sorted_offsets
+            #print(weights_new)
             #print("weights_new shape: " + str(weights_new.shape))
             #print(BL_INDEX*BL_SIZE)
             #print((BL_INDEX+1)*BL_SIZE)
@@ -76,14 +84,32 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
                 updated_pc = self.smpl.set_params(beta=params[72:82], pose=params[0:72], trans=params[82:85])
                 self.pcs[i] = updated_pc
 
+            return self.params, self.pcs
+
+    def on_epoch_end(self):
+        # NOTE - this function is NOT thread-safe
+        #print("\nEPOCH: " + str(self.epoch) + "\n")
+        # Distract selected base poses
+        # Update a block of parameters
+        #print("Distracting base pose...")
+        if self.epoch >= 0:
+            # Offset poses
+            self.update_samples(epoch=self.epoch)
+
             # Finally, shuffle the data
             if self.shuffle:
                 np.random.shuffle(self.indices)
 
             # Write the examples to file
             if self.save_path is not None:
-                with open(self.save_path, 'w') as f:
-                    np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples])
+                sample_path = self.save_path + "cb_samples_E{}.npz".format(self.epoch)
+                with open(sample_path, 'w') as f:
+                    if self.ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+                        mask_to_save = np.tile(self.trainable_params_mask, (len(self.cb_samples), 1))
+                        np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples],\
+                                trainable_params=mask_to_save)
+                    else:
+                        np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples])
 
             #print("generator params shape after change: " + str(self.params.shape))
             #print("generator pcs shape after change: " + str(self.pcs.shape))
@@ -102,18 +128,27 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
         X_batch_index = self.indices[index*self.batch_size:(index+1)*self.batch_size]
         X_batch_params = self.params[X_batch_index]
         X_batch_pc = self.pcs[X_batch_index]
+        #print(X_batch_params[0])
 
-        # TODO: adjust for different architectures
         X_batch = [np.array(X_batch_index), np.array(X_batch_params), np.array(X_batch_pc)]
-        Y_batch = [np.zeros((self.batch_size, 85)), np.zeros((self.batch_size,)), np.zeros((self.batch_size, 6890, 3)), np.zeros((self.batch_size,)), np.zeros((self.batch_size,)), np.zeros((self.batch_size, 85)), np.zeros((self.batch_size, 85)), np.zeros((self.batch_size, 85)), np.zeros((self.batch_size, 85)), np.zeros((self.batch_size, 31))]
+        Y_batch = architecture_output_array(self.ARCHITECTURE, self.batch_size, self.num_trainable)
+        #print("Y_batch batch size: " + str(Y_batch[0].shape))
+
+        if self.ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+            X_batch += [np.tile(self.trainable_params_mask, (self.batch_size, 1))]
 
         return X_batch, Y_batch
 
-    def yield_data(self):
+    def yield_data(self, epoch=0):
         """ Yield all of the data, correctly ordered """
         ordered_indices = [i for i in range(self.num_samples)]
+        if epoch > 0:
+            self.update_samples(epoch)
         X_data = [np.array(ordered_indices), np.array(self.params), np.array(self.pcs)]
-        Y_data = [np.zeros((self.num_samples, 85)), np.zeros((self.num_samples,)), np.zeros((self.num_samples, 6890, 3)), np.zeros((self.num_samples,)), np.zeros((self.num_samples,)), np.zeros((self.num_samples, 85)), np.zeros((self.num_samples, 85)), np.zeros((self.num_samples, 85)), np.zeros((self.num_samples, 85)), np.zeros((self.num_samples, 31))]
+        Y_data = architecture_output_array(self.ARCHITECTURE, self.num_samples, self.num_trainable)
+
+        if self.ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+            X_data += [np.tile(self.trainable_params_mask, (self.num_samples, 1))]
 
         return X_data, Y_data
 

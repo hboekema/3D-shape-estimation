@@ -132,8 +132,33 @@ def LatentConv1DOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl
         gt_latent = latent_output_layer(gt_hidden_latent)
 
     if input_type == "MESH_NORMALS":
-        print("No implementation for mesh normals. Exiting.")
-        exit(1)
+        # Subsample the point clouds
+        subsample_n = 10
+        vertex_list = [i*subsample_n for i in range(6890/subsample_n)]    # Take every nth vertex
+        face_array = np.array([[face for face in faces if vertex in face][0] for vertex in vertex_list])      # only take a single face for each vertex
+        print("face_array shape: " + str(face_array.shape))
+
+        # Cast learned pc to the latent space
+        optlearner_pc_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(optlearner_pc)
+        opt_normals_NOGRAD = get_mesh_normals(optlearner_pc_NOGRAD, face_array, layer_name="latent_opt_cross_product")
+        print("opt_normals_NOGRAD shape: " + str(opt_normals_NOGRAD.shape))
+        optlearner_normals_flat_NOGRAD = Flatten()(opt_normals_NOGRAD)
+        optlearner_hidden_latent = latent_hidden_layer(optlearner_normals_flat_NOGRAD)
+        optlearner_hidden_latent = Dropout(0.5)(optlearner_hidden_latent)
+        optlearner_latent = latent_output_layer(optlearner_hidden_latent)
+
+
+        # Cast ground truth pc to the latent space
+        gt_pc_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(gt_pc)
+        gt_normals_NOGRAD = get_mesh_normals(gt_pc_NOGRAD, face_array, layer_name="latent_gt_cross_product")
+        print("gt_normals_NOGRAD shape: " + str(gt_normals_NOGRAD.shape))
+        gt_normals_flat_NOGRAD = Flatten()(gt_normals_NOGRAD)
+        gt_hidden_latent = latent_hidden_layer(gt_normals_flat_NOGRAD)
+        gt_hidden_latent = Dropout(0.5)(gt_hidden_latent)
+        gt_latent = latent_output_layer(gt_hidden_latent)
+
+        #print("No implementation for mesh normals. Exiting.")
+        #exit(1)
 #        optlearner_hidden_pc = latent_hidden_layer()
 #        gt_hidden_pc = latent_hidden_layer()
 
@@ -144,32 +169,27 @@ def LatentConv1DOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl
     optlearner_architecture = Reshape((optlearner_architecture.shape[1].value, 1))(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
-    #optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
-    #optlearner_architecture = Conv1D(128, 5, activation="relu")(optlearner_architecture)
-    #optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
+    #optlearner_architecture = Conv1D(64, 3, activation="relu")(optlearner_architecture)
+    #optlearner_architecture = Conv1D(64, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     optlearner_architecture = Conv1D(128, 3, activation="relu")(optlearner_architecture)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    #optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
-    #optlearner_architecture = AveragePooling1D(2)(optlearner_architecture)
-    #optlearner_architecture = Conv1D(512, 3, activation="relu")(optlearner_architecture)
-    #optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
+    #optlearner_architecture = Conv1D(128, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = MaxPooling1D(2)(optlearner_architecture)
     #optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     #optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
     #optlearner_architecture = Conv1D(256, 3, activation="relu")(optlearner_architecture)
     #optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    #optlearner_architecture = GlobalAveragePooling1D()(optlearner_architecture)
     #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
-    optlearner_architecture = GlobalAveragePooling1D()(optlearner_architecture)
-    #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
-    #optlearner_architecture = Flatten()(optlearner_architecture)
+    optlearner_architecture = Flatten()(optlearner_architecture)
     #conv_shape = int(np.prod(optlearner_architecture.shape[1:]))
     #optlearner_architecture = Reshape((conv_shape,))(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
-    #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
-    #optlearner_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
+    optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+    optlearner_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     #delta_d_hat = Dense(85, activation=pos_scaled_tanh, name="delta_d_hat")(optlearner_architecture)
     delta_d_hat = Dense(85, activation="linear", name="delta_d_hat")(optlearner_architecture)

@@ -4,7 +4,8 @@ import sys
 import os
 import numpy as np
 import matplotlib
-matplotlib.use("TkAgg")
+matplotlib.use("Agg")
+#matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 
 from smpl_np import SMPLModel

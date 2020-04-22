@@ -1,8 +1,8 @@
 GENERAL:
-    GPU_ID: "0"
+    #GPU_ID: "0"
     #GPU_ID: "1"
     #GPU_ID: "2"
-    #GPU_ID: "3"
+    GPU_ID: "3"
     #GPU_ID: "4"
     #GPU_ID: "5"
     #GPU_ID: "6"
@@ -11,28 +11,39 @@ BASIC:
     #RESET_PERIOD: 1000000
     #RESET_PERIOD: 1000
     #RESET_PERIOD: 400
-    RESET_PERIOD: 200
+    #RESET_PERIOD: 200
     #RESET_PERIOD: 100
-    #RESET_PERIOD: 50
+    RESET_PERIOD: 50
     #RESET_PERIOD: 25
     #RESET_PERIOD: 20
     #RESET_PERIOD: 10
     #MODEL_SAVE_PERIOD: 1
     #MODEL_SAVE_PERIOD: 10
+    #MODEL_SAVE_PERIOD: 20
     MODEL_SAVE_PERIOD: 50
     #MODEL_SAVE_PERIOD: 500000
     #PREDICTION_PERIOD: 1
-    PREDICTION_PERIOD: 5
-    #PREDICTION_PERIOD: 10
+    #PREDICTION_PERIOD: 5
+    PREDICTION_PERIOD: 10
+    #PREDICTION_PERIOD: 100
+    #PREDICTION_PERIOD: 10000
     OPTIMISATION_PERIOD: 50
     #DISTRACTOR: "pi"
     #DISTRACTOR: 0.0
     #DISTRACTOR: 0.3
     #DISTRACTOR: 0.5
-    #DISTRACTOR: {"other": 0.3}
+    #DISTRACTOR: {"other": 0.3} 
+    #DISTRACTOR: {"param_01": "pi", "param_56": "pi", "param_59": "pi", "other": 0.0}
     #DISTRACTOR: {"param_01": "pi", "other": 0.3}
-    DISTRACTOR: {"param_00": 0.0, "param_01": "pi", "param_02": 0.0, "other": 0.3}
+    DISTRACTOR: {"param_01": "pi", "other": 1.0}
+    #DISTRACTOR: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.3}
+    #DISTRACTOR: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.0}
+    #DISTRACTOR: {"param_01": "pi", "trainable": 1.0, "shape_other": 3.0}
+    #DISTRACTOR: {"param_00": 0.0, "param_01": 0.3, "param_02": 0.0, "other": 0.3}
+    #DISTRACTOR: {"param_00": 0.0, "param_01": "pi", "param_02": 0.0, "other": 0.3}
     #DISTRACTOR: {"param_00": 0.0, "param_01": 0.0, "param_02": 0.0, "other": 0.3}
+    #NUM_SAMPLES: 5 
+    #NUM_SAMPLES: 20
     #NUM_SAMPLES: 100
     #NUM_SAMPLES: 200
     #NUM_SAMPLES: 1000
@@ -45,7 +56,15 @@ BASIC:
 DATA:
     #POSE_OFFSET: 0.0
     #POSE_OFFSET: {"other": 0.3}
-    POSE_OFFSET: {"param_01": "pi", "other": 0.3}
+    #POSE_OFFSET: {"other": "pi"} 
+    #POSE_OFFSET: {"param_01": "pi", "other": 0.3}
+    #POSE_OFFSET: {"param_01": "pi", "other": 1.0}
+    #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.0}
+    #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.3}
+    POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 1.0}
+    OFFSET_NT: False 
+    #OFFSET_NT: True 
+    #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "shape_other": 3.0}
     #PARAMS_TO_OFFSET: "trainable_params"
     PARAMS_TO_OFFSET: "all_pose_and_global_rotation"
     
@@ -62,16 +81,82 @@ DATA:
 
 PARAMS:
     #TRAINABLE: "all_pose"
-    TRAINABLE: "all_pose_and_global_rotation"
+    #TRAINABLE: "all_pose_and_global_rotation"
+ 
+    # Test conditional kinematic levels (3D)
+    #TRAINABLE: ["param_00", "param_01", "param_02"] 
+    #TRAINABLE: ["param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59"]
+    #TRAINABLE: ["param_24", "param_25", "param_26", "param_21", "param_22", "param_23", "param_60", "param_61", "param_62", "param_63", "param_64", "param_65"]
+
+    # Conditional kinematic levels (1D)
+    #TRAINABLE: ["param_01"]
+    #TRAINABLE: ["param_11"]
+    #TRAINABLE: ["param_05", "param_08", "param_20"]
+    #TRAINABLE: ["param_14", "param_17", "param_29"]
+    #TRAINABLE: ["param_23", "param_26", "param_38", "param_41", "param_44"]
+    #TRAINABLE: ["param_47", "param_50", "param_53"]
+    #TRAINABLE: ["param_56", "param_59"]
+    #TRAINABLE: ["param_62", "param_65"]
+    #TRAINABLE: ["param_68", "param_71"]
+        
+    # Grouped parameters (3D)
+    # 8 joints/group
+    #TRAINABLE: ["param_00", "param_01", "param_02", "param_09", "param_10", "param_11", "param_03", "param_04", "param_05", "param_06", "param_07", "param_08", "param_18", "param_19", "param_20", "param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_27", "param_28", "param_29"]
+    #TRAINABLE: ["param_21", "param_22", "param_23", "param_24", "param_25", "param_26", "param_36", "param_37", "param_38", "param_39", "param_40", "param_41", "param_42", "param_43", "param_44", "param_45", "param_46", "param_47", "param_48", "param_49", "param_50", "param_51", "param_52", "param_53"]
+    #TRAINABLE: ["param_30", "param_31", "param_32", "param_33", "param_34", "param_35", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61", "param_62", "param_63", "param_64", "param_65", "param_66", "param_67", "param_68", "param_69", "param_70", "param_71"]
+    
+    # 4 joints/group
+    #TRAINABLE: ["param_00", "param_01", "param_02", "param_09", "param_10", "param_11", "param_03", "param_04", "param_05", "param_06", "param_07", "param_08"] 
+    #TRAINABLE: ["param_18", "param_19", "param_20", "param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_27", "param_28", "param_29"]
+    #TRAINABLE: ["param_21", "param_22", "param_23", "param_24", "param_25", "param_26", "param_36", "param_37", "param_38", "param_39", "param_40", "param_41"]
+    #TRAINABLE: ["param_42", "param_43", "param_44", "param_45", "param_46", "param_47", "param_48", "param_49", "param_50", "param_51", "param_52", "param_53"]
+    #TRAINABLE: ["param_30", "param_31", "param_32", "param_33", "param_34", "param_35", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59"]
+    #TRAINABLE: ["param_60", "param_61", "param_62", "param_63", "param_64", "param_65", "param_66", "param_67", "param_68", "param_69", "param_70", "param_71"]
+
+    # 1D 4 joints and global rotation, all shape parameters
+    #TRAINABLE: ["param_01", "param_14", "param_17", "param_59", "param_56", "param_72", "param_73", "param_74", "param_75", "param_76", "param_77", "param_78", "param_79", "param_80", "param_81"] 
+    
+    # 3D 4 joints and global rotation
+    #TRAINABLE: ["param_00", "param_01", "param_02", "param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59"]
+    
+    # 3D 12 joints, 1D global rotation
+    #TRAINABLE: ["param_01", "param_03", "param_04", "param_05", "param_06", "param_07", "param_08", "param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_21", "param_22", "param_23", "param_24", "param_25", "param_26", "param_48", "param_49", "param_50", "param_51", "param_52", "param_53", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59", "param_60", "param_61", "param_62", "param_63", "param_64", "param_65"] 
+    # 3D 8 joints, 1D global rotation
+    #TRAINABLE: ["param_01", "param_03", "param_04", "param_05", "param_06", "param_07", "param_08", "param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_48", "param_49", "param_50", "param_51", "param_52", "param_53", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59"]  
+    # 3D 4 joints, 1D global rotation
+    #TRAINABLE: ["param_01", "param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59"]         
+
+    # 1D 23 joints and global rotation
+    #TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_29", "param_32", "param_35", "param_38", "param_41", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59", "param_62", "param_65", "param_68", "param_71"] 
+    # 1D 20 joints and global rotation
+    #TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_29", "param_32", "param_35", "param_38", "param_41", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59"] 
+    # 1D 18 joints and global rotation
+    TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_32", "param_35", "param_38", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59"] 
+    # 1D 16 joints and global rotation
+    #TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59", "param_62", "param_65"] 
+    #TRAINABLE: ["param_01", "param_03", "param_06", "param_09", "param_12", "param_15", "param_29", "param_38",  "param_41",  "param_44", "param_47", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"] 
+    # 1D 12 joints and global rotation
+    #TRAINABLE: ["param_01", "param_05", "param_08", "param_14", "param_17", "param_23", "param_26", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"] 
+    # 1D 11 joints and global rotation
     #TRAINABLE: ["param_01", "param_29", "param_38",  "param_41",  "param_44", "param_47", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"] 
+    # 1D 8 joints and global rotation
+    #TRAINABLE: ["param_01", "param_14",  "param_17", "param_23", "param_26", "param_59", "param_56", "param_62", "param_65"]
+    #TRAINABLE: ["param_01", "param_05", "param_08", "param_14", "param_17", "param_50", "param_53", "param_59", "param_56"] 
     #TRAINABLE: ["param_01", "param_41",  "param_44", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"]
+    # 1D 6 joints and global rotation
     #TRAINABLE: ["param_01", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"]
-    #TRAINABLE: ["param_01", "param_50", "param_53", "param_59", "param_56"]
+    # 1D 4 joints and global rotation
     #TRAINABLE: ["param_01", "param_14", "param_17", "param_59", "param_56"]
+    #TRAINABLE: ["param_01", "param_50", "param_53", "param_59", "param_56"]
+    # 1D 4 joints
     #TRAINABLE: ["param_14", "param_17", "param_59", "param_56"]
+    # 1D 2 joints and global rotation
     #TRAINABLE: ["param_01", "param_59", "param_56"]
+    # 1D 1 joint and global rotation
     #TRAINABLE: ["param_01", "param_59"]
     #TRAINABLE: ["param_59", "param_56"]
+    
+    # 1D 1 joint/global rotation
     #TRAINABLE: ["param_01"]
     #TRAINABLE: ["param_56"]
     #TRAINABLE: ["param_59"]
@@ -82,29 +167,38 @@ MODEL:
     #ARCHITECTURE: "FullOptLearnerStaticArchitecture"
     #ARCHITECTURE: "Conv1DFullOptLearnerStaticArchitecture"
     #ARCHITECTURE: "GAPConv1DOptLearnerStaticArchitecture"
-    ARCHITECTURE: "DeepConv1DOptLearnerStaticArchitecture"
-    ARCHITECTURE: "ResConv1DOptLearnerStaticArchitecture"
+    #ARCHITECTURE: "DeepConv1DOptLearnerStaticArchitecture"
+    ARCHITECTURE: "NewDeepConv1DOptLearnerArchitecture" 
+    #ARCHITECTURE: "ResConv1DOptLearnerStaticArchitecture"
+    #ARCHITECTURE: "ProbCNNOptLearnerStaticArchitecture"
+    #ARCHITECTURE: "GatedCNNOptLearnerArchitecture" 
     #ARCHITECTURE: "LatentConv1DOptLearnerStaticArchitecture"
-    INPUT_TYPE: "3D_POINTS"
-    #INPUT_TYPE: "MESH_NORMALS"
-    #LEARNING_RATE: 0.005
+    #ARCHITECTURE: "RotConv1DOptLearnerArchitecture"
+    #ARCHITECTURE: "ConditionalOptLearnerArchitecture"
+    #INPUT_TYPE: "3D_POINTS"
+    INPUT_TYPE: "MESH_NORMALS"
+    LEARNING_RATE: 0.005
     #LEARNING_RATE: 0.002
-    LEARNING_RATE: 0.001
-    #DELTA_D_LOSS_WEIGHT: 500 
+    #LEARNING_RATE: 0.001
+    DELTA_D_LOSS_WEIGHT: 500 
     #DELTA_D_LOSS_WEIGHT: 200
-    DELTA_D_LOSS_WEIGHT: 100
+    #DELTA_D_LOSS_WEIGHT: 100
     #DELTA_D_LOSS_WEIGHT: 0
-    PC_LOSS_WEIGHT: 500
+    #PC_LOSS_WEIGHT: 500
     #PC_LOSS_WEIGHT: 200
-    #PC_LOSS_WEIGHT: 100
+    PC_LOSS_WEIGHT: 100
     #PC_LOSS_WEIGHT: 10
+    #PC_LOSS_WEIGHT: 1
+    #PC_LOSS_WEIGHT: 0 
+    #DELTA_D_HAT_LOSS_WEIGHT: 10
     DELTA_D_HAT_LOSS_WEIGHT: 1
     EPOCHS: 1000000 
+    #BATCH_SIZE: 1 
     #BATCH_SIZE: 5
-    BATCH_SIZE: 100
+    #BATCH_SIZE: 100
     #BATCH_SIZE: 128
-    #BATCH_SIZE: 1024
+    BATCH_SIZE: 1024
     #BATCH_SIZE: 4096
 
 TEST:
-    test_iterations: 50
+    test_iterations: 200

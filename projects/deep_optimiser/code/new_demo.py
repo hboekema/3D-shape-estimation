@@ -13,17 +13,15 @@ parser.add_argument("--run_id", help="Identifier of this network pass")
 
 args = parser.parse_args()
 
+model_dirs = []
+
 # Read in the configurations
-if args.config is not None:
-    with open(args.config, 'r') as f:
-        setup_params = json.load(f)
-else:
-    with open("./config.yaml", 'r') as f:
-        try:
-            setup_params = yaml.safe_load(f)
-            #print(setup_params)
-        except yaml.YAMLError as exc:
-            print(exc)
+with open(model_dirs[0] + "code/config.yaml", 'r') as f:
+    try:
+        setup_params = yaml.safe_load(f)
+        #print(setup_params)
+    except yaml.YAMLError as exc:
+        print(exc)
 
 # Set the ID of this training pass
 if args.run_id is not None:
@@ -79,23 +77,19 @@ from training_helpers import offset_params, format_distractor_dict, architecture
 #np.random.seed(10)
 np.random.seed(11)
 
-exp_dir = os.getcwd().replace("code", "")
+#exp_dir = os.getcwd().replace("code", "")
 #exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/Conv1DFullOptLearnerStaticArchitecture_2020-02-18_17:57:17/"
+exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/Multimodel_test/"
+os.system('mkdir ' + exp_dir)
 print("Experiment directory: " + str(exp_dir))
-models = os.listdir(exp_dir + "models/")
-if len(models) == 0:
-    print("No models for this experiment. Exiting.")
-    exit(1)
-else:
-    models.sort(key=lambda x: float(x[x.find("-")+1 : x.find(".hdf5")]))
-    model_name = models[0]
-    print("Using model '{}'".format(model_name))
 
 learning_rates = [1.000, 0.500, 0.125]
 
 save_suffix = ""
 #save_suffix = "_non-zero_pose"
-model = exp_dir + "models/" + model_name
+model_name = "model1"
+general_logs_dir = exp_dir + "logs/"
+os.system('mkdir ' + general_logs_dir)
 logs_dir = exp_dir + "logs/" + model_name + save_suffix + "/"
 os.system('mkdir ' + logs_dir)
 control_logs_dir = exp_dir + "logs/control" + save_suffix + "/"
@@ -127,7 +121,11 @@ for lr in learning_rates:
 
 
 # Generate the data from the SMPL parameters
-trainable_params = setup_params["PARAMS"]["TRAINABLE"]
+#trainable_params = setup_params["PARAMS"]["TRAINABLE"]
+trainable_params = [
+        "param_00", "param_01", "param_02",
+        "param_12", "param_13", "param_14", "param_15", "param_16", "param_17", "param_54", "param_55", "param_56", "param_57", "param_58", "param_59",
+        "param_24", "param_25", "param_26", "param_21", "param_22", "param_23", "param_60", "param_61", "param_62", "param_63", "param_64", "param_65"]
 param_ids = ["param_{:02d}".format(i) for i in range(85)]
 
 if trainable_params == "all_pose":

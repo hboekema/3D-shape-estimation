@@ -3,7 +3,7 @@ import numpy as np
 #import tensorflow.compat.v1 as tf
 import tensorflow as tf
 import keras.backend as K
-from keras.layers import Input, Dense, Flatten, Conv1D, AveragePooling1D, MaxPooling1D, GlobalAveragePooling1D, Lambda, Concatenate, Dropout, BatchNormalization, Embedding, Reshape, Multiply, Add, Activation
+from keras.layers import Input, Dense, Flatten, Conv1D, MaxPooling1D, GlobalAveragePooling1D, Lambda, Concatenate, Dropout, BatchNormalization, Embedding, Reshape, Multiply, Add, AveragePooling1D
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.applications.resnet50 import ResNet50
@@ -15,11 +15,11 @@ from points3d import Points3DFromSMPLParams, get_parameters
 from smpl_np_rot_v6 import load_params
 #from smpl_tf import smpl_model, smpl_model_batched
 from render_mesh import Mesh
-from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights
+from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights, normal_sample, normal_log_prob, normal_log_prob_pos, normal_entropy, normal_entropy_pos, distributional_model_loss
 
 
-def ResConv1DOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
-    """ Optimised learner network architecture """
+def ProbCNNOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
+    """ Optimised learner network architecture that outputs samples from a distribution instead of deterministic estimates """
     # An embedding layer is required to optimise the parameters
     optlearner_input = Input(shape=(1,), name="embedding_index")
 
@@ -107,92 +107,72 @@ def ResConv1DOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_pa
     mesh_diff_NOGRAD = Concatenate()([diff_normals_NOGRAD, dist_angles_NOGRAD])
 
     if input_type == "3D_POINTS":
-        #optimiser_input = Dense(2**9, activation="relu")(vertex_diff_NOGRAD)
-        optimiser_input = Dense(2**7, activation="relu")(vertex_diff_NOGRAD)
+        optlearner_architecture = Dense(2**9, activation="relu")(vertex_diff_NOGRAD)
     if input_type == "MESH_NORMALS":
-        #optimiser_input = Dense(2**11, activation="relu")(diff_angles_norm_NOGRAD)
-        #optimiser_input = Dense(2**11, activation="relu")(diff_angles_NOGRAD)
-        #optimiser_input = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
-        optimiser_input = Dense(2**7, activation="relu")(mesh_diff_NOGRAD)
-    optimiser_input = BatchNormalization()(optimiser_input)
-    #optimiser_input = Dropout(0.5)(optimiser_input)
-    print('optimiser_input shape: '+str(optimiser_input.shape))
-    optimiser_input = Reshape((optimiser_input.shape[1].value, 1))(optimiser_input)
-    print('optimiser_input shape: '+str(optimiser_input.shape))
-
-    # Input block
-    res_input = Conv1D(64, 3, activation="relu", padding="same")(optimiser_input)
-    res_input = BatchNormalization()(res_input)
-
-    # Residual block 1
-    optlearner_architecture = Conv1D(64, 3, activation="relu", padding="same")(res_input)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    optlearner_architecture = Conv1D(64, 3, activation="linear", padding="same")(optlearner_architecture)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    #optlearner_architecture = Conv1D(64, 1, activation="linear", padding="same", use_bias=False)(optlearner_architecture)
-    res_input = Conv1D(64, 1, activation="linear", padding="same", use_bias=False)(res_input)
-    res1_output = Add()([optlearner_architecture, res_input])
-    res1_output = Activation("relu")(res1_output)
-    print("res1_output shape: " + str(res1_output.shape))
-    res1_output = MaxPooling1D(2)(res1_output)
-    print("res1_output shape (after pooling): " + str(res1_output.shape))
-
-    # Residual block 2
-    optlearner_architecture = Conv1D(128, 3, activation="relu", padding="same")(res1_output)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    optlearner_architecture = Conv1D(128, 3, activation="linear", padding="same")(optlearner_architecture)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    #optlearner_architecture = Conv1D(128, 1, activation="linear", padding="same", use_bias=False)(optlearner_architecture)
-    res1_output = Conv1D(128, 1, activation="linear", padding="same", use_bias=False)(res1_output)
-    res2_output = Add()([optlearner_architecture, res1_output])
-    res2_output = Activation("relu")(res2_output)
-    print("res2_output shape: " + str(res2_output.shape))
-    res2_output = MaxPooling1D(2)(res2_output)
-    print("res2_output shape (after pooling): " + str(res2_output.shape))
-
-    # Residual block 3
-    optlearner_architecture = Conv1D(256, 3, activation="relu", padding="same")(res2_output)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    optlearner_architecture = Conv1D(256, 3, activation="linear", padding="same")(optlearner_architecture)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    #optlearner_architecture = Conv1D(256, 1, activation="linear", padding="same", use_bias=False)(optlearner_architecture)
-    res2_output = Conv1D(256, 1, activation="linear", padding="same", use_bias=False)(res2_output)
-    res3_output = Add()([optlearner_architecture, res2_output])
-    res3_output = Activation("relu")(res3_output)
-    print("res3_output shape: " + str(res3_output.shape))
-    res3_output = MaxPooling1D(2)(res3_output)
-    print("res3_output shape (after pooling): " + str(res3_output.shape))
-
-    # Residual block 3
-    optlearner_architecture = Conv1D(512, 3, activation="relu", padding="same")(res3_output)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    optlearner_architecture = Conv1D(512, 3, activation="linear", padding="same")(optlearner_architecture)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    #optlearner_architecture = Conv1D(512, 1, activation="linear", padding="same", use_bias=False)(optlearner_architecture)
-    res3_output = Conv1D(512, 1, activation="linear", padding="same", use_bias=False)(res3_output)
-    res4_output = Add()([optlearner_architecture, res3_output])
-    res4_output = Activation("relu")(res4_output)
-    print("res4_output shape: " + str(res4_output.shape))
-    #res4_output = MaxPooling1D(2)(res4_output)
-
-    optlearner_architecture = GlobalAveragePooling1D()(res4_output)
-    print("optlearner architecture shape (after GAP): " + str(optlearner_architecture.shape))
-    optlearner_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
-    optlearner_architecture = BatchNormalization()(optlearner_architecture)
+        optlearner_architecture = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
-    #delta_d_hat = Dense(85, activation=pos_scaled_tanh, name="delta_d_hat")(optlearner_architecture)
-    delta_d_hat = Dense(85, activation="linear", name="delta_d_hat")(optlearner_architecture)
-    #delta_d_hat = Dense(85, activation=centred_linear, name="delta_d_hat")(optlearner_architecture)
-    print('delta_d_hat shape: '+str(delta_d_hat.shape))
+    optlearner_architecture = Reshape((optlearner_architecture.shape[1].value, 1))(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Conv1D(64, 5, activation="relu")(optlearner_architecture)
+    optlearner_architecture = MaxPooling1D(3)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Conv1D(128, 3, activation="relu")(optlearner_architecture)
+    optlearner_architecture = AveragePooling1D(2)(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Flatten()(optlearner_architecture)
+    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+    optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+
+    # Learn the parameters of a univariate Gausssian distribution for each SMPL parameter
+    mu_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
+    delta_d_hat_mu = Dense(85, activation="linear", name="delta_d_hat_mu")(mu_architecture)
+    print('delta_d_hat_mu shape: '+str(delta_d_hat_mu.shape))
+    sigma_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
+    delta_d_hat_sigma = Dense(85, activation="softplus", name="delta_d_hat_sigma_uncorrected")(sigma_architecture)
+    delta_d_hat_sigma = Lambda(lambda x: x + 1e-5, name="delta_d_hat_sigma")(delta_d_hat_sigma)
+    print('delta_d_hat_sigma shape: '+str(delta_d_hat_sigma.shape))
     #exit(1)
+
+    # Draw a sample from the distribution
+    delta_d_hat = normal_sample(delta_d_hat_mu, delta_d_hat_sigma)
+    delta_d_hat = Lambda(lambda x: x, name="delta_d_hat")(delta_d_hat)
+
+    # Calculate the log probability of the sample and the entropy of the distribution
+    #log_prob = normal_log_prob(delta_d_hat, delta_d_hat_mu, delta_d_hat_sigma)
+    log_prob = normal_log_prob_pos(delta_d_hat, delta_d_hat_mu, delta_d_hat_sigma)
+    #entropy = normal_entropy(delta_d_hat_sigma)
+    #entropy = normal_entropy_pos(delta_d_hat_sigma)
+    false_entropy = Lambda(lambda x: 1./(1. + x), name="false_entropy")(delta_d_hat_sigma)
 
     # Calculate the (batched) MSE between the learned and ground truth offset in the parameters
     delta_d_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(delta_d)
-    false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD, delta_d_hat])
-    #false_loss_delta_d_hat = Lambda(lambda x: K.sum(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD, delta_d_hat])
-    #false_loss_delta_d_hat = Lambda(lambda x: mape(x[0], x[1]))([delta_d_NOGRAD, delta_d_hat])
-    false_loss_delta_d_hat = Reshape(target_shape=(1,), name="delta_d_hat_mse")(false_loss_delta_d_hat)
-    print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
+    delta_d_hat_square_diff = Lambda(lambda x: K.square(x[0] - x[1]), name="delta_d_hat_square_diff")([delta_d_NOGRAD, delta_d_hat])
+    delta_d_hat_mse = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD, delta_d_hat])
+    delta_d_hat_mse = Reshape(target_shape=(1,), name="delta_d_hat_mse")(delta_d_hat_mse)
+    print("delta_d_hat loss shape: " + str(delta_d_hat_mse.shape))
+
+    # Construct the loss function
+    #advantage = Lambda(lambda x: K.abs(x[0]) - K.abs(x[0] - x[1]), name="adv_1_norm")([delta_d_NOGRAD, delta_d_hat])   # 1-norm advantage
+    advantage = Lambda(lambda x: K.square(x[0]) - K.square(x[0] - x[1]), name="adv_2_norm")([delta_d_NOGRAD, delta_d_hat])   # 2-norm advantage
+    #advantage = Lambda(lambda x: K.mean(K.square(x[0]), axis=-1) - K.mean(K.square(x[0] - x[1]), axis=-1), name="adv_2_norm")([delta_d_NOGRAD, delta_d_hat])   # 2-norm advantage
+    advantage_NOGRAD = Lambda(lambda x: K.stop_gradient(x), name="adv_NOGRAD")(advantage)
+    #eligibility = Multiply(name="eligibility")([log_prob, advantage_NOGRAD])
+    eligibility = Multiply(name="eligibility")([log_prob, advantage])
+    #false_loss_delta_d_hat = distributional_model_loss(eligibility, entropy, weighting=1.)
+    weighting = 1.
+    false_loss_delta_d_hat = Lambda(lambda x: -x[0] + weighting*x[1], name="dist_perf")([eligibility, false_entropy])
+
+    #penalty_func_mu = Lambda(lambda x: 0.1*K.exp(K.square(x) - np.pi**2))(delta_d_hat_mu)
+    penalty_func_sigma = Lambda(lambda x: K.square(x))(delta_d_hat_sigma)
+    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(x[0] + x[1] + x[2], axis=1), name="reg_dist_goodness")([false_loss_delta_d_hat, penalty_func_mu, penalty_func_sigma])
+    false_loss_delta_d_hat = Lambda(lambda x: K.mean(x[0] + x[1], axis=1), name="reg_dist_goodness")([false_loss_delta_d_hat, penalty_func_sigma])
+    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(x[0] + x[1], axis=1), name="reg_dist_goodness")([false_loss_delta_d_hat, penalty_func_mu])
+    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(x[0] + x[1], axis=1), name="reg_dist_goodness")([false_loss_delta_d_hat, delta_d_hat_square_diff])
+    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(x, axis=1), name="mean_dist_perf_unshaped")(false_loss_delta_d_hat)
+    false_loss_delta_d_hat = Reshape(target_shape=(1,), name="mean_dist_perf")(false_loss_delta_d_hat)
+
+    # Get metrics
     #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
     false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
     false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_sin_loss_delta_d_hat)
@@ -205,7 +185,6 @@ def ResConv1DOptLearnerStaticArchitecture(param_trainable, init_wrapper, smpl_pa
     false_loss_smpl = Multiply(name="smpl_diff")([optlearner_params, delta_d_hat_NOGRAD])
     print("smpl loss shape: " + str(false_loss_smpl.shape))
 
-    #return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, delta_d_hat_NOGRAD]
-    return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles]
+    return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles, delta_d_hat_mu, delta_d_hat_sigma, delta_d_hat_mse]
 
 

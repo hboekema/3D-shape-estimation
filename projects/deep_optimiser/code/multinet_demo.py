@@ -8,19 +8,25 @@ from datetime import datetime
 
 # Parse the command-line arguments
 parser = ArgumentParser()
-parser.add_argument("--config", help="Path to configuration file")
 parser.add_argument("--run_id", help="Identifier of this network pass")
 
 args = parser.parse_args()
 
+exp_dirs = [
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-21_15:30:19/",
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-21_15:37:33/",
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-21_15:38:18/",
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-21_15:38:53/",
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-21_15:40:00/",
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-21_15:40:38/"
+        ]
+
 # Read in the configurations
-if args.config is not None:
-    with open(args.config, 'r') as f:
-        setup_params = json.load(f)
-else:
-    with open("./config.yaml", 'r') as f:
+all_setup_params = []
+for exp_dir in exp_dirs:
+    with open(exp_dir + "code/config.yaml", 'r') as f:
         try:
-            setup_params = yaml.safe_load(f)
+            all_setup_params.append(yaml.safe_load(f))
             #print(setup_params)
         except yaml.YAMLError as exc:
             print(exc)
@@ -30,10 +36,14 @@ if args.run_id is not None:
     run_id = args.run_id
 else:
     # Use the current date, time and model architecture as a run-id
-    run_id = datetime.now().strftime("{}_%Y-%m-%d_%H:%M:%S".format(setup_params["MODEL"]["ARCHITECTURE"]))
+    run_id = datetime.now().strftime("{}_%Y-%m-%d_%H:%M:%S".format("MultiNet"))
+    run_id = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/{}/".format(run_id)
+os.system('mkdir ' + str(run_id))
 
 import tensorflow as tf
 from keras.backend.tensorflow_backend import set_session
+
+setup_params = all_setup_params[0]
 
 # Set number of GPUs to use
 #os.environ["CUDA_VISIBLE_DEVICES"] = "7"
@@ -79,30 +89,50 @@ from training_helpers import offset_params, format_distractor_dict, architecture
 #np.random.seed(10)
 np.random.seed(11)
 
-exp_dir = os.getcwd().replace("code", "")
-#exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/Conv1DFullOptLearnerStaticArchitecture_2020-02-18_17:57:17/"
-print("Experiment directory: " + str(exp_dir))
-models = os.listdir(exp_dir + "models/")
-if len(models) == 0:
-    print("No models for this experiment. Exiting.")
-    exit(1)
-else:
-    models.sort(key=lambda x: float(x[x.find("-")+1 : x.find(".hdf5")]))
-    model_name = models[0]
-    print("Using model '{}'".format(model_name))
+models = []
+for exp_dir in exp_dirs:
+    print("Experiment directory: " + str(exp_dir))
+    models_in_dir = os.listdir(exp_dir + "models/")
+    if len(models_in_dir) == 0:
+        print("No models for this experiment. Exiting.")
+        exit(1)
+    else:
+        models_in_dir.sort(key=lambda x: float(x[x.find("-")+1 : x.find(".hdf5")]))
+        model_name = models_in_dir[0]
+        print("Using model '{}'".format(model_name))
 
-learning_rates = [1.000, 0.500, 0.125]
+    model = exp_dir + "models/" + model_name
+    models.append(model)
+
+learning_rates = [0.500]
+
+model_dir = run_id + "models/"
+logs_dir = run_id + "logs/"
+opt_logs_dir = logs_dir + "opt/"
+train_vis_dir = run_id + "train_vis/"
+test_vis_dir = run_id + "test_vis/"
+opt_vis_dir = run_id + "opt_vis/"
+code_dir = run_id + "code/"
+tensorboard_logs_dir = logs_dir + "scalars/"
+os.mkdir(model_dir)
+os.mkdir(logs_dir)
+os.mkdir(opt_logs_dir)
+os.mkdir(train_vis_dir)
+os.mkdir(test_vis_dir)
+os.mkdir(opt_vis_dir)
+os.mkdir(code_dir)
+print("Experiment directory: \n" + str(exp_dir))
+os.system("cp -r ./* " + str(code_dir))
 
 save_suffix = ""
 #save_suffix = "_non-zero_pose"
-model = exp_dir + "models/" + model_name
-logs_dir = exp_dir + "logs/" + model_name + save_suffix + "/"
+logs_dir = run_id + "logs/model" + save_suffix + "/"
 os.system('mkdir ' + logs_dir)
-control_logs_dir = exp_dir + "logs/control" + save_suffix + "/"
+control_logs_dir = run_id + "logs/control" + save_suffix + "/"
 os.system('mkdir ' + control_logs_dir)
-test_vis_dir = exp_dir + "test_vis/" + model_name + save_suffix + "/"
+test_vis_dir = run_id + "test_vis/model" + save_suffix + "/"
 os.system('mkdir ' + test_vis_dir)
-control_dir = exp_dir + "test_vis/" + "control" + save_suffix + "/"
+control_dir = run_id + "test_vis/" + "control" + save_suffix + "/"
 os.system('mkdir ' + control_dir)
 
 logs_dirs = []
@@ -112,22 +142,23 @@ control_dirs = []
 for lr in learning_rates:
     #save_suffix = "_lr_" + str(lr)
     sub_dir = "lr_{:02f}/".format(lr)
-    logs_dir = exp_dir + "logs/" + model_name + save_suffix + "/" + sub_dir
+    logs_dir = run_id + "logs/model" + save_suffix + "/" + sub_dir
     logs_dirs.append(logs_dir)
     os.system('mkdir ' + logs_dir)
-    control_logs_dir = exp_dir + "logs/control" + save_suffix + "/" + sub_dir
+    control_logs_dir = run_id + "logs/control" + save_suffix + "/" + sub_dir
     control_logs_dirs.append(control_logs_dir)
     os.system('mkdir ' + control_logs_dir)
-    test_vis_dir = exp_dir + "test_vis/" + model_name + save_suffix + "/" + sub_dir
+    test_vis_dir = run_id + "test_vis/model" + save_suffix + "/" + sub_dir
     test_vis_dirs.append(test_vis_dir)
     os.system('mkdir ' + test_vis_dir)
-    control_dir = exp_dir + "test_vis/" + "control" + save_suffix + "/" + sub_dir
+    control_dir = run_id + "test_vis/" + "control" + save_suffix + "/" + sub_dir
     control_dirs.append(control_dir)
     os.system('mkdir ' + control_dir)
 
 
 # Generate the data from the SMPL parameters
-trainable_params = setup_params["PARAMS"]["TRAINABLE"]
+#trainable_params = setup_params["PARAMS"]["TRAINABLE"]
+trainable_params = "all_3d"
 param_ids = ["param_{:02d}".format(i) for i in range(85)]
 
 if trainable_params == "all_pose":
@@ -142,17 +173,10 @@ elif trainable_params == "all_pose_and_global_rotation":
     #trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 72]
     trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 66]
     trainable_params = [param_ids[index] for index in trainable_params_indices]
-
-#trainable_params = ["param_14", "param_17", "param_59", "param_56"]
-#trainable_params = ["param_01", "param_59", "param_56"]
-#trainable_params = ["param_01", "param_59"]
-#trainable_params = ["param_59", "param_56"]
-#trainable_params = ["param_01"]
-#trainable_params = ["param_56"]
-#trainable_params = ["param_59"]
+elif trainable_params == "all_3d":
+    trainable_params = param_ids[:72]
 
 param_trainable = { param: (param in trainable_params) for param in param_ids }
-
 
 # Basic experimental setup
 RESET_PERIOD = setup_params["BASIC"]["RESET_PERIOD"]
@@ -258,107 +282,138 @@ def emb_init_weights_np(emb_params, distractor=np.pi):
 
 emb_initialiser = emb_init_weights_np(X_params, distractor=DISTRACTOR)
 
-# Load model
-smpl_params, input_info, faces = load_smpl_params()
-print("Optimiser architecture: " + str(ARCHITECTURE))
-optlearner_inputs, optlearner_outputs = architecture_inputs_and_outputs(ARCHITECTURE, param_trainable, emb_initialiser, smpl_params, input_info, faces, data_samples, INPUT_TYPE)
-print("optlearner inputs " +str(optlearner_inputs))
-print("optlearner outputs "+str(optlearner_outputs))
-
-#input_indices = [0, 2]
-#output_indices = [0, 2, 3, 5]
-#optlearner_model = Model(inputs=[input_ for i, input_ in enumerate(optlearner_inputs) if i in input_indices], outputs=[output for i, output in enumerate(optlearner_outputs) if i in output_indices])
-optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)
-optlearner_model.load_weights(model)
-
-# Freeze all layers except for the required embedding layers
-trainable_layers_names = [param_layer for param_layer, trainable in param_trainable.items() if trainable]
-trainable_layers = {optlearner_model.get_layer(layer_name): int(layer_name[6:8]) for layer_name in trainable_layers_names}
-for layer in optlearner_model.layers:
-    if layer.name not in trainable_layers_names:
-        layer.trainable = False
-
-
 # Set the weights of the embedding layer
 initial_weights = np.zeros((data_samples, 85))
 for layer_name, trainable in param_trainable.items():
-    emb_layer = optlearner_model.get_layer(layer_name)
     emb_init_ = emb_initialiser(param=int(layer_name[6:8]), offset=trainable)
     layer_init_weights = emb_init_(shape=(data_samples,))
     initial_weights[:, int(layer_name[6:8])] = layer_init_weights
-    emb_layer.set_weights(layer_init_weights.reshape((1, data_samples, 1)))
-    #print(np.array(emb_layer.get_weights()).shape)
 
-# Compile the model
-learning_rate = 0.01
-optimizer = Adam(lr=learning_rate, decay=0.0)
-#optimizer = SGD(learning_rate, momentum=0.0, nesterov=False)
-if INPUT_TYPE == "MESH_NORMALS":
-    optlearner_loss = [no_loss,
-            false_loss, # delta_d loss (L_smpl loss)
-            no_loss,
-            no_loss, # point cloud loss (L_xent)
-            false_loss, # delta_d hat loss (L_delta_smpl)
-            no_loss, # delta_d_hat sin metric
-            no_loss, # this is the loss which updates smpl parameter inputs with predicted gradient
-            no_loss, no_loss,
-            false_loss # difference angle loss (L_xent)
-            ]
-    optlearner_loss_weights=[
-            0.0,
-            1.0, # delta_d loss (L_smpl loss)
-            0.0,
-            0.0, # point cloud loss (L_xent)
-            1.0, # delta_d_hat loss (L_delta_smpl)
-            0.0, # delta_d_hat sin metric - always set to 0
-            0.0/learning_rate, # this is the loss which updates smpl parameter inputs with predicted gradient
-            0.0, 0.0,
-            1.0, # difference angle loss (L_xent)
-            ]
+# Build models
+optlearner_models = []
+optlearner_layers = []
+for i, model in enumerate(models):
+    setup_params = all_setup_params[i]
+    trainable_params = setup_params["PARAMS"]["TRAINABLE"]
 
-elif INPUT_TYPE == "3D_POINTS":
-    optlearner_loss = [no_loss,
-            false_loss, # delta_d loss (L_smpl loss)
-            no_loss,
-            false_loss, # point cloud loss (L_xent)
-            false_loss, # delta_d hat loss (L_delta_smpl)
-            no_loss, # delta_d_hat sin metric
-            no_loss, # this is the loss which updates smpl parameter inputs with predicted gradient
-            no_loss, no_loss,
-            no_loss # difference angle loss (L_xent)
-            ]
-    optlearner_loss_weights=[
-            0.0,
-            1.0, # delta_d loss (L_smpl loss)
-            0.0,
-            1.0, # point cloud loss (L_xent)
-            1.0, # delta_d_hat loss (L_delta_smpl)
-            0.0, # delta_d_hat sin metric - always set to 0
-            0.0/learning_rate, # this is the loss which updates smpl parameter inputs with predicted gradient
-            0.0, 0.0,
-            0.0, # difference angle loss (L_xent)
-            ]
+    if trainable_params == "all_pose":
+        not_trainable = [0, 1, 2]
+        #not_trainable = []
+        #trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 72]
+        trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 66]
+        trainable_params = [param_ids[index] for index in trainable_params_indices]
+    elif trainable_params == "all_pose_and_global_rotation":
+        not_trainable = [0, 2]
+        #not_trainable = []
+        #trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 72]
+        trainable_params_indices = [index for index in range(85) if index not in not_trainable and index < 66]
+        trainable_params = [param_ids[index] for index in trainable_params_indices]
+    elif trainable_params == "all_3d":
+        trainable_params = param_ids[:72]
 
-if ARCHITECTURE == "RotConv1DOptLearnerArchitecture":
-    optlearner_loss += [false_loss, false_loss, false_loss, false_loss]
-    optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0]
-    #optlearner_loss += [false_loss, false_loss, false_loss, false_loss, false_loss, false_loss]
-    #optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    param_trainable = { param: (param in trainable_params) for param in param_ids }
 
-if ARCHITECTURE == "ProbCNNOptLearnerStaticArchitecture" or ARCHITECTURE == "GatedCNNOptLearnerArchitecture":
-    optlearner_loss += [false_loss, false_loss, false_loss]
-    optlearner_loss_weights += [0.0, 0.0, 0.0]
+    # Load models
+    smpl_params, input_info, faces = load_smpl_params()
+    print("Optimiser architecture: " + str(ARCHITECTURE))
+    optlearner_inputs, optlearner_outputs = architecture_inputs_and_outputs(ARCHITECTURE, param_trainable, emb_initialiser, smpl_params, input_info, faces, data_samples, INPUT_TYPE)
+    print("optlearner inputs " +str(optlearner_inputs))
+    print("optlearner outputs "+str(optlearner_outputs))
 
-optlearner_model.compile(optimizer=optimizer, loss=optlearner_loss, loss_weights=optlearner_loss_weights,
-                                            metrics={"delta_d_hat_sin_output": false_loss}
-                                            #metrics={"delta_d_hat_sin_output": trainable_param_metric([int(param[6:8]) for param in trainable_params])}
-                                            #options=run_options,
-                                            #run_metadata=run_metadata
-                                            )
+    #input_indices = [0, 2]
+    #output_indices = [0, 2, 3, 5]
+    #optlearner_model = Model(inputs=[input_ for i, input_ in enumerate(optlearner_inputs) if i in input_indices], outputs=[output for i, output in enumerate(optlearner_outputs) if i in output_indices])
+    optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)
+    optlearner_model.load_weights(model)
 
-# Print model summary
-optlearner_model.summary()
+    # Freeze all layers except for the required embedding layers
+    trainable_layers_names = [param_layer for param_layer, trainable in param_trainable.items() if trainable]
+    trainable_layers = {optlearner_model.get_layer(layer_name): int(layer_name[6:8]) for layer_name in trainable_layers_names}
+    for layer in optlearner_model.layers:
+        if layer.name not in trainable_layers_names:
+            layer.trainable = False
+    optlearner_layers.append(trainable_layers_names)
 
+    # Set the weights of the embedding layer
+    for layer_name, trainable in param_trainable.items():
+        emb_layer = optlearner_model.get_layer(layer_name)
+        emb_layer.set_weights(layer_init_weights.reshape((1, data_samples, 1)))
+        #print(np.array(emb_layer.get_weights()).shape)
+
+    # Compile the model
+    learning_rate = 0.01
+    optimizer = Adam(lr=learning_rate, decay=0.0)
+    #optimizer = SGD(learning_rate, momentum=0.0, nesterov=False)
+    if INPUT_TYPE == "MESH_NORMALS":
+        optlearner_loss = [no_loss,
+                false_loss, # delta_d loss (L_smpl loss)
+                no_loss,
+                no_loss, # point cloud loss (L_xent)
+                false_loss, # delta_d hat loss (L_delta_smpl)
+                no_loss, # delta_d_hat sin metric
+                no_loss, # this is the loss which updates smpl parameter inputs with predicted gradient
+                no_loss, no_loss,
+                false_loss # difference angle loss (L_xent)
+                ]
+        optlearner_loss_weights=[
+                0.0,
+                1.0, # delta_d loss (L_smpl loss)
+                0.0,
+                0.0, # point cloud loss (L_xent)
+                1.0, # delta_d_hat loss (L_delta_smpl)
+                0.0, # delta_d_hat sin metric - always set to 0
+                0.0/learning_rate, # this is the loss which updates smpl parameter inputs with predicted gradient
+                0.0, 0.0,
+                1.0, # difference angle loss (L_xent)
+                ]
+
+    elif INPUT_TYPE == "3D_POINTS":
+        optlearner_loss = [no_loss,
+                false_loss, # delta_d loss (L_smpl loss)
+                no_loss,
+                false_loss, # point cloud loss (L_xent)
+                false_loss, # delta_d hat loss (L_delta_smpl)
+                no_loss, # delta_d_hat sin metric
+                no_loss, # this is the loss which updates smpl parameter inputs with predicted gradient
+                no_loss, no_loss,
+                no_loss # difference angle loss (L_xent)
+                ]
+        optlearner_loss_weights=[
+                0.0,
+                1.0, # delta_d loss (L_smpl loss)
+                0.0,
+                1.0, # point cloud loss (L_xent)
+                1.0, # delta_d_hat loss (L_delta_smpl)
+                0.0, # delta_d_hat sin metric - always set to 0
+                0.0/learning_rate, # this is the loss which updates smpl parameter inputs with predicted gradient
+                0.0, 0.0,
+                0.0, # difference angle loss (L_xent)
+                ]
+
+    if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+        optlearner_loss += [false_loss]
+        optlearner_loss_weights += [0.0]
+
+    if ARCHITECTURE == "RotConv1DOptLearnerArchitecture":
+        optlearner_loss += [false_loss, false_loss, false_loss, false_loss]
+        optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0]
+        #optlearner_loss += [false_loss, false_loss, false_loss, false_loss, false_loss, false_loss]
+        #optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    if ARCHITECTURE == "ProbCNNOptLearnerStaticArchitecture" or ARCHITECTURE == "GatedCNNOptLearnerArchitecture":
+        optlearner_loss += [false_loss, false_loss, false_loss]
+        optlearner_loss_weights += [0.0, 0.0, 0.0]
+
+    optlearner_model.compile(optimizer=optimizer, loss=optlearner_loss, loss_weights=optlearner_loss_weights,
+                                                metrics={"delta_d_hat_sin_output": false_loss}
+                                                #metrics={"delta_d_hat_sin_output": trainable_param_metric([int(param[6:8]) for param in trainable_params])}
+                                                #options=run_options,
+                                                #run_metadata=run_metadata
+                                                )
+
+    # Print model summary
+    optlearner_model.summary()
+    optlearner_models.append(optlearner_model)
 
 # Visualisation callbacks
 epoch_pred_cbs = []
@@ -374,18 +429,19 @@ for lr_num, lr in enumerate(learning_rates):
     epoch_pred_cbs_control.append(epoch_pred_cb_control)
 
 
-def learned_optimizer(optlearner_model, epochs=50, lr=0.1, cb=epoch_pred_cb, mode="RODRIGUES"):
-    metrics_names = optlearner_model.metrics_names
+def learned_optimizer(optlearner_models, epochs=50, lr=0.1, cb=epoch_pred_cb, mode="RODRIGUES"):
+    layers_names = [param_layer for param_layer, trainable in param_trainable.items() if int(param_layer[6:8] < 72)]
+    optlearner_models_layers = [{optlearner_model.get_layer(layer_name): int(layer_name[6:8]) for layer_name in layers_names} for optlearner_model in optlearner_models]
+
+    metrics_names = optlearner_models[0].metrics_names
     print("metrics_names: " + str(metrics_names))
     named_scores = {}
-    output_names = [output.op.name.split("/")[0] for output in optlearner_model.outputs]
+    output_names = [output.op.name.split("/")[0] for output in optlearner_models[0].outputs]
     print("output_names: " + str(output_names))
     pred_index = output_names.index("delta_d_hat")
     #print("prediction index: " + str(pred_index))
 
-    cb.set_model(optlearner_model)
-    #layer_names = ["diff_cross_product", "diff_angle_mse"]
-    #intermediate_layer_model = Model(inputs=optlearner_model.input, outputs=[optlearner_model.get_layer(layer_name).output for layer_name in layer_names])
+    cb.set_model(optlearner_models[0])
 
     for epoch in range(epochs):
         print("Epoch: " + str(epoch + 1))
@@ -394,21 +450,20 @@ def learned_optimizer(optlearner_model, epochs=50, lr=0.1, cb=epoch_pred_cb, mod
         #print('emb layer weights'+str(emb_weights))
 	#print('shape '+str(emb_weights[0].shape))
         test_samples = [arr[:num_samples] for arr in x_test]
-	y_pred = optlearner_model.predict(test_samples)
-        delta_d_hat = np.zeros((data_samples, 85))
-        delta_d_hat[:num_samples] = y_pred[pred_index]
+        for i, optlearner_model in enumerate(optlearner_models):
+            y_pred = optlearner_model.predict(test_samples)
+            delta_d_hat = np.zeros((data_samples, 85))
+            delta_d_hat[:num_samples] = y_pred[pred_index]
 
-        # Evaluate the mesh normals
-        #intermediate_output = intermediate_layer_model.predict(x_test)
-        #print("mesh_normals: " + str(intermediate_output[0][:5]))
-        #print("mesh_normals_mse: " + str(intermediate_output[1][:5]))
-
-        for emb_layer, param_num in trainable_layers.items():
-	    emb_weights = emb_layer.get_weights()
-            #emb_weights += lr * np.array(y_pred[7][:, param_num]).reshape((data_samples, 1))
-            #emb_weights += lr * np.array(y_pred[8][:, param_num]).reshape((data_samples, 1))
-            emb_weights += lr * np.array(delta_d_hat[:, param_num]).reshape((data_samples, 1))
-	    emb_layer.set_weights(emb_weights)
+            # Apply this update to all models' weights
+            for optlearner_model_layer in optlearner_models_layers:
+                for emb_layer, param_num in optlearner_model_layer:
+                    if "param_{:02d}".param_num in optlearner_layers[i]:
+    	                emb_weights = emb_layer.get_weights()
+                        #emb_weights += lr * np.array(y_pred[7][:, param_num]).reshape((data_samples, 1))
+                        #emb_weights += lr * np.array(y_pred[8][:, param_num]).reshape((data_samples, 1))
+                        emb_weights += lr * np.array(delta_d_hat[:, param_num]).reshape((data_samples, 1))
+    	                emb_layer.set_weights(emb_weights)
 
         # Evaluate model performance
         #scores = optlearner_model.evaluate(x_test, y_test, batch_size=100)
@@ -417,7 +472,7 @@ def learned_optimizer(optlearner_model, epochs=50, lr=0.1, cb=epoch_pred_cb, mod
         #print("scores: " + str(scores))
         #exit(1)
         cb.on_epoch_end(epoch=int(epoch), logs=named_scores)
-    cb.set_model(optlearner_model)
+    cb.set_model(optlearner_models[0])
 
 
 def regular_optimizer(optlearner_model, epochs=50):
@@ -434,13 +489,13 @@ def regular_optimizer(optlearner_model, epochs=50):
 if __name__ == "__main__":
     for lr_num, lr in enumerate(learning_rates):
         print("\nTesting for lr '{:02f}'...".format(lr))
-        learned_optimizer(optlearner_model, epochs=TEST_EPOCHS, lr=lr, cb=epoch_pred_cbs[lr_num])
+        learned_optimizer(optlearner_models, epochs=TEST_EPOCHS, lr=lr, cb=epoch_pred_cbs[lr_num])
 
         # Reset the weights of the embedding layer
-        for layer_name, trainable in param_trainable.items():
-            emb_layer = optlearner_model.get_layer(layer_name)
-            layer_init_weights = initial_weights[:, int(layer_name[6:8])]
-            emb_layer.set_weights(layer_init_weights.reshape(1, data_samples, 1))
+        #for layer_name, trainable in param_trainable.items():
+        #    emb_layer = optlearner_model.get_layer(layer_name)
+        #    layer_init_weights = initial_weights[:, int(layer_name[6:8])]
+        #    emb_layer.set_weights(layer_init_weights.reshape(1, data_samples, 1))
     #regular_optimizer(optlearner_model, epochs=TEST_EPOCHS)
     exit(1)
 

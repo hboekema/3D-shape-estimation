@@ -1,5 +1,7 @@
 
-from keras.layers import Dense, Input, Flatten, Dropout, BatchNormalization
+import numpy as np
+import keras.backend as K
+from keras.layers import Dense, Input, Flatten, Dropout, BatchNormalization, Lambda
 
 
 def DenseValueNetwork(input_dim=(6890, 3)):
@@ -19,12 +21,10 @@ def DenseValueNetwork(input_dim=(6890, 3)):
     vertex_diff = Flatten()(vertex_diff)
 
     # Simple dense network with two hidden layers estimates the value function
-    valnet_architecture = Dense(2048, activation="relu")(vertex_diff)
-    valnet_architecture = Dropout(0.5)(valnet_architecture)
-    valnet_architecture = Dense(512, activation="relu")(valnet_architecture)
-    valnet_architecture = Dropout(0.5)(valnet_architecture)
-    valnet_output = Dense(1, activation="linear", name="return_estimate")(valnet_architecture)
+    #valnet_architecture = Dense(2048, activation="relu")(vertex_diff)
+    valnet_architecture = Dense(1024, activation="relu")(vertex_diff)
+    #valnet_architecture = Dropout(0.5)(valnet_architecture)
 
-    # Input is the state s, output is the (estimated) expectation of return R
-    return [state_input], [valnet_output]
+    # Input is the state s, output is a base for the (estimated) expectation of return R
+    return state_input, valnet_architecture
 

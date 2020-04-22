@@ -1,7 +1,8 @@
 import os
 import numpy as np
 import matplotlib
-matplotlib.use("TkAgg")
+#matplotlib.use("TkAgg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from copy import copy
 from PIL import Image, ImageOps

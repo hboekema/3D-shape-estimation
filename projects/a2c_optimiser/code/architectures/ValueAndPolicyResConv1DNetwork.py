@@ -1,11 +1,10 @@
 
-import numpy as np
 import keras.backend as K
-from keras.layers import Add, Activation, Dense, Input, Flatten, Dropout, BatchNormalization, Lambda, Conv1D, MaxPooling1D, GlobalAveragePooling1D, Reshape
+from keras.layers import Dense, Input, Flatten, Dropout, BatchNormalization, Lambda, Conv1D, MaxPooling1D, GlobalAveragePooling1D, Reshape
 
 
-def ResConv1DPolicyNetwork(input_dim=(6890, 3)):
-    """ Estimates the (stochastic) policy function for the given state """
+def ValueAndPolicyResConv1DNetwork(input_dim=(6890, 3)):
+    """ Estimates the (stochastic) policy and value functions for the given state """
     # Current state - this is the difference between two point clouds
     state_input = Input(input_dim, name="polnet_input")
 
@@ -21,22 +20,28 @@ def ResConv1DPolicyNetwork(input_dim=(6890, 3)):
     print("vertex_diff shape: " + str(vertex_diff.shape))
     vertex_diff = Flatten()(vertex_diff)
 
+    # Dense network for estimating the value function
+    valnet_architecture = Dense(2048, activation="relu")(vertex_diff)
+    valnet_architecture = Dropout(0.5)(valnet_architecture)
+    valnet_architecture = Dense(512, activation="relu")(valnet_architecture)
+    valnet_architecture = Dropout(0.5)(valnet_architecture)
+    valnet_output = Dense(1, activation="linear", name="return_estimate")(valnet_architecture)
 
     # 1D convolutional network for estimating the policy function
     # Input block
     polnet_input = Dense(128, activation="relu")(vertex_diff)
-    #polnet_input = BatchNormalization()(polnet_input)
-    polnet_input = Reshape((polnet_input.shape[1].value, 1))(polnet_input)
+    polnet_input = BatchNormalization()(polnet_input)
+    polnet_input = Reshape(polnet_input.shape[1], 1)(polnet_input)
     print('polnet_input shape: '+str(polnet_input.shape))
     polnet_input = Conv1D(64, 3, activation="relu", padding="same")(polnet_input)
-    #polnet_input = BatchNormalization()(polnet_input)
+    polnet_input = BatchNormalization()(polnet_input)
     print('polnet_input shape: '+str(polnet_input.shape))
 
     # Residual block 1
     polnet_architecture = Conv1D(64, 3, activation="relu", padding="same")(polnet_input)
-    #polnet_architecture = BatchNormalization()(polnet_architecture)
+    polnet_architecture = BatchNormalization()(polnet_architecture)
     polnet_architecture = Conv1D(64, 3, activation="linear", padding="same")(polnet_architecture)
-    #polnet_architecture = BatchNormalization()(polnet_architecture)
+    polnet_architecture = BatchNormalization()(polnet_architecture)
     #polnet_architecture = Conv1D(64, 1, activation="linear", padding="same", use_bias=False)(polnet_architecture)
     polnet_input = Conv1D(64, 1, activation="linear", padding="same", use_bias=False)(polnet_input)
     res1_output = Add()([polnet_architecture, polnet_input])
@@ -47,9 +52,9 @@ def ResConv1DPolicyNetwork(input_dim=(6890, 3)):
 
     # Residual block 2
     polnet_architecture = Conv1D(128, 3, activation="relu", padding="same")(res1_output)
-    #polnet_architecture = BatchNormalization()(polnet_architecture)
+    polnet_architecture = BatchNormalization()(polnet_architecture)
     polnet_architecture = Conv1D(128, 3, activation="linear", padding="same")(polnet_architecture)
-    #polnet_architecture = BatchNormalization()(polnet_architecture)
+    polnet_architecture = BatchNormalization()(polnet_architecture)
     #polnet_architecture = Conv1D(128, 1, activation="linear", padding="same", use_bias=False)(polnet_architecture)
     res1_output = Conv1D(128, 1, activation="linear", padding="same", use_bias=False)(res1_output)
     res2_output = Add()([polnet_architecture, res1_output])
@@ -60,9 +65,9 @@ def ResConv1DPolicyNetwork(input_dim=(6890, 3)):
 
     # Residual block 3
     polnet_architecture = Conv1D(256, 3, activation="relu", padding="same")(res2_output)
-    #polnet_architecture = BatchNormalization()(polnet_architecture)
+    polnet_architecture = BatchNormalization()(polnet_architecture)
     polnet_architecture = Conv1D(256, 3, activation="linear", padding="same")(polnet_architecture)
-    #polnet_architecture = BatchNormalization()(polnet_architecture)
+    polnet_architecture = BatchNormalization()(polnet_architecture)
     polnet_architecture = Conv1D(256, 1, activation="linear", padding="same", use_bias=False)(polnet_architecture)
     res2_output = Conv1D(256, 1, activation="linear", padding="same", use_bias=False)(res2_output)
     res3_output = Add()([polnet_architecture, res2_output])
@@ -74,7 +79,17 @@ def ResConv1DPolicyNetwork(input_dim=(6890, 3)):
     # Output block
     polnet_architecture = GlobalAveragePooling1D()(res3_output)
     print("polnet architecture shape (after GAP): " + str(polnet_architecture.shape))
+    polnet_architecture = Dense(128, activation="relu")(polnet_architecture)
+    polnet_architecture = BatchNormalization()(polnet_architecture)
+    print('polnet_architecture shape: '+str(polnet_architecture.shape))
+    polnet_mu = Dense(85, activation="linear", name="polnet_mu")(polnet_architecture)
+    polnet_sigma = Dense(85, activation="softplus", name="polnet_sigma")(polnet_architecture)   # can (in theory) be zero - need to guard by adding small constant
+    policy_dist = Lambda(lambda x: K.tf.contrib.distributions.Normal(x[0], x[1]), name="policy_dist")([polnet_mu, polnet_sigma])
 
-    # Input is the state s, output is the base for the policy distribution prediction network
-    return state_input, polnet_architecture
+    # Draw a sample from the policy distribution for this state
+    policy_sample = Lambda(lambda x: x.sample(1), name="policy_sample")(policy_dist)
+    policy_sample = Reshape((85,), name="policy_sample_output")(policy_sample)
+
+    # Input is the state s, outputs are the sample from the policy distribution, the distribution itself and the estimated expectation of the return
+    return [state_input], [policy_sample, policy_dist, valnet_output]
 

@@ -5,44 +5,7 @@ import sys
 import argparse
 import json
 from datetime import datetime
-import keras
-import keras.backend as K
-from keras.callbacks import LambdaCallback, TensorBoard
-from keras.models import Model
-from keras.optimizers import Adam,SGD
-import matplotlib
-matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt
 import yaml
-import numpy as np
-import tensorflow as tf
-import pickle
-
-sys.path.append('/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/')
-from architectures.OptLearnerCombinedStaticModArchitecture import OptLearnerCombinedStaticModArchitecture
-from architectures.OptLearnerMeshNormalStaticArchitecture import OptLearnerMeshNormalStaticArchitecture
-from architectures.OptLearnerMeshNormalStaticModArchitecture import OptLearnerMeshNormalStaticModArchitecture
-from architectures.BasicFCOptLearnerStaticArchitecture import BasicFCOptLearnerStaticArchitecture
-from architectures.FullOptLearnerStaticArchitecture import FullOptLearnerStaticArchitecture
-from architectures.Conv1DFullOptLearnerStaticArchitecture import Conv1DFullOptLearnerStaticArchitecture
-from architectures.GAPConv1DOptLearnerStaticArchitecture import GAPConv1DOptLearnerStaticArchitecture
-from architectures.DeepConv1DOptLearnerStaticArchitecture import DeepConv1DOptLearnerStaticArchitecture
-from architectures.ResConv1DOptLearnerStaticArchitecture import ResConv1DOptLearnerStaticArchitecture
-from architectures.LatentConv1DOptLearnerStaticArchitecture import LatentConv1DOptLearnerStaticArchitecture
-from architectures.architecture_helpers import false_loss, no_loss, load_smpl_params, emb_init_weights
-from smpl_np import SMPLModel
-from posenet_maths_v5 import rotation_matrix_to_euler_angles
-from smpl_np_rot_v6 import rodrigues
-from euler_rodrigues_transform import rodrigues_to_euler
-
-from render_mesh import Mesh
-from callbacks import PredOnEpochEnd, OptLearnerPredOnEpochEnd, OptimisationCallback
-from generate_data import load_data
-from training_helpers import update_weights_wrapper, offset_params, format_distractor_dict
-from silhouette_generator import OptLearnerUpdateGenerator
-
-
-""" Set-up """
 
 # Parse the command-line arguments
 parser = argparse.ArgumentParser()
@@ -70,6 +33,57 @@ else:
     # Use the current date, time and model architecture as a run-id
     run_id = datetime.now().strftime("{}_%Y-%m-%d_%H:%M:%S".format(setup_params["MODEL"]["ARCHITECTURE"]))
 
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
+
+# Set number of GPUs to use
+#os.environ["CUDA_VISIBLE_DEVICES"] = "7"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "6"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "5"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = setup_params["GENERAL"]["GPU_ID"]
+print("gpu used:|" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
+#exit(1)
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+sess = tf.Session(config=config)
+set_session(sess)
+
+import keras
+import keras.backend as K
+from keras.callbacks import LambdaCallback, TensorBoard
+from keras.models import Model
+from keras.optimizers import Adam,SGD
+import matplotlib
+#matplotlib.use("TkAgg")
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+import pickle
+
+sys.path.append('/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/')
+from architectures.architecture_helpers import false_loss, no_loss, load_smpl_params, emb_init_weights
+from smpl_np import SMPLModel
+from posenet_maths_v5 import rotation_matrix_to_euler_angles
+from smpl_np_rot_v6 import rodrigues
+from euler_rodrigues_transform import rodrigues_to_euler
+
+from render_mesh import Mesh
+from callbacks import PredOnEpochEnd, OptLearnerPredOnEpochEnd, OptimisationCallback, OptLearnerLossGraphCallback
+from generate_data import load_data
+from training_helpers import update_weights_wrapper, offset_params, format_distractor_dict, architecture_output_array, architecture_inputs_and_outputs
+from silhouette_generator import OptLearnerUpdateGenerator
+
+
+""" Set-up """
+
+
 # Create experiment directory
 exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/" + str(run_id) + "/"
 model_dir = exp_dir + "models/"
@@ -90,20 +104,6 @@ os.mkdir(opt_vis_dir)
 os.mkdir(code_dir)
 print("Experiment directory: \n" + str(exp_dir))
 os.system("cp -r ./* " + str(code_dir))
-
-
-# Set number of GPUs to use
-#os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "6"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "5"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "4"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["CUDA_VISIBLE_DEVICES"] = setup_params["GENERAL"]["GPU_ID"]
-print("gpu used:|" + str(os.environ["CUDA_VISIBLE_DEVICES"]) + "|")
-#exit(1)
 
 
 """ Set-up and data generation """
@@ -147,6 +147,7 @@ DISTRACTOR = setup_params["BASIC"]["DISTRACTOR"]
 data_samples = setup_params["BASIC"]["NUM_SAMPLES"]
 DATA_LOAD_DIR = setup_params["DATA"]["TRAIN_DATA_DIR"]
 POSE_OFFSET = setup_params["DATA"]["POSE_OFFSET"]
+OFFSET_NT = setup_params["DATA"]["OFFSET_NT"]
 PARAMS_TO_OFFSET = setup_params["DATA"]["PARAMS_TO_OFFSET"]
 USE_GENERATOR = setup_params["DATA"]["USE_GENERATOR"]
 ARCHITECTURE = setup_params["MODEL"]["ARCHITECTURE"]
@@ -170,9 +171,11 @@ zero_params = np.zeros(shape=(85,))
 zero_pc = smpl.set_params(beta=zero_params[72:82], pose=zero_params[0:72].reshape((24,3)), trans=zero_params[82:85])
 #print("zero_pc: " + str(zero_pc))
 
-
+#print(PARAMS_TO_OFFSET)
+#print(POSE_OFFSET)
 if USE_GENERATOR:
-    update_generator = OptLearnerUpdateGenerator(data_samples, RESET_PERIOD, POSE_OFFSET, PARAMS_TO_OFFSET, batch_size=BATCH_SIZE, smpl=smpl, shuffle=True)
+    trainable_params_mask = [int(param_trainable[key]) for key in sorted(param_trainable.keys(), key=lambda x: int(x[6:8]))]
+    update_generator = OptLearnerUpdateGenerator(data_samples, RESET_PERIOD, POSE_OFFSET, PARAMS_TO_OFFSET, ARCHITECTURE, batch_size=BATCH_SIZE, smpl=smpl, shuffle=True, save_path=train_vis_dir, trainable_params_mask=trainable_params_mask)
     X_data, Y_data = update_generator.yield_data()
     print("Y_data shapes: " + str([datum.shape for datum in Y_data]))
     X_indices = X_data[0]
@@ -201,25 +204,17 @@ else:
         X_params = rodrigues_to_euler(X_params, smpl)
 
     X_data = [np.array(X_indices), np.array(X_params), np.array(X_pcs)]
-    if ARCHITECTURE == "OptLearnerMeshNormalStaticModArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 7))]
-    elif ARCHITECTURE == "BasicFCOptLearnerStaticArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 7))]
-    elif ARCHITECTURE == "FullOptLearnerStaticArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
-    elif ARCHITECTURE == "Conv1DFullOptLearnerStaticArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
-    elif ARCHITECTURE == "GAPConv1DOptLearnerStaticArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
-    elif ARCHITECTURE == "DeepConv1DOptLearnerStaticArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
-    elif ARCHITECTURE == "ResConv1DOptLearnerStaticArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
-    elif ARCHITECTURE == "LatentConv1DOptLearnerStaticArchitecture":
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
-    else:
-        raise ValueError("Architecture '{}' not recognised".format(ARCHITECTURE))
+    Y_data = architecture_output_array(ARCHITECTURE, data_samples, len(trainable_params))
 
+    if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+        trainable_params_mask = [int(param_trainable[key]) for key in sorted(param_trainable.keys(), key=lambda x: int(x[6:8]))]
+        #print(trainable_params_mask)
+        trainable_params_mask = np.tile(trainable_params_mask, (data_samples, 1))
+        print("trainable_maks_shape: " + str(trainable_params_mask.shape))
+        X_data += [trainable_params_mask]
+        #exit(1)
+#print(len(X_data))
+#exit(1)
 
 # Render silhouettes for the callback data
 num_cb_samples = 5
@@ -252,7 +247,11 @@ PC_LOSS_WEIGHT = setup_params["MODEL"]["PC_LOSS_WEIGHT"]
 DELTA_D_HAT_LOSS_WEIGHT = setup_params["MODEL"]["DELTA_D_HAT_LOSS_WEIGHT"]
 
 # Embedding initialiser
-emb_initialiser = emb_init_weights(X_params, period=RESET_PERIOD, distractor=DISTRACTOR)
+#emb_initialiser = emb_init_weights(X_params, period=RESET_PERIOD, distractor=DISTRACTOR)   # if the initial distribution should match the stationary distribution
+if OFFSET_NT:
+    emb_initialiser = emb_init_weights(X_params, period=None, distractor=DISTRACTOR, pose_offset=POSE_OFFSET)
+else:
+    emb_initialiser = emb_init_weights(X_params, period=None, distractor=DISTRACTOR)
 
 # Callback functions
 # Create a model checkpoint after every few epochs
@@ -263,7 +262,7 @@ model_save_checkpoint = tf.keras.callbacks.ModelCheckpoint(
 
 # Predict on sample params at the end of every few epochs
 if USE_GENERATOR:
-    epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=False, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples, train_gen="./cb_samples.npz")
+    epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=False, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples, train_gen=train_vis_dir)
 else:
     epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=False, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples)
     #epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=True, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples)
@@ -287,29 +286,13 @@ def print_summary_wrapper(path):
 # Build and compile the model
 smpl_params, input_info, faces = load_smpl_params()
 print("Optimiser architecture: " + str(ARCHITECTURE))
-if ARCHITECTURE == "OptLearnerMeshNormalStaticModArchitecture":
-    optlearner_inputs, optlearner_outputs = OptLearnerMeshNormalStaticModArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-elif ARCHITECTURE == "BasicFCOptLearnerStaticArchitecture":
-    optlearner_inputs, optlearner_outputs = BasicFCOptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-elif ARCHITECTURE == "FullOptLearnerStaticArchitecture":
-    optlearner_inputs, optlearner_outputs = FullOptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-elif ARCHITECTURE == "Conv1DFullOptLearnerStaticArchitecture":
-    optlearner_inputs, optlearner_outputs = Conv1DFullOptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-elif ARCHITECTURE == "GAPConv1DOptLearnerStaticArchitecture":
-    optlearner_inputs, optlearner_outputs = GAPConv1DOptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-elif ARCHITECTURE == "DeepConv1DOptLearnerStaticArchitecture":
-    optlearner_inputs, optlearner_outputs = DeepConv1DOptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-elif ARCHITECTURE == "ResConv1DOptLearnerStaticArchitecture":
-    optlearner_inputs, optlearner_outputs = ResConv1DOptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-elif ARCHITECTURE == "LatentConv1DOptLearnerStaticArchitecture":
-    optlearner_inputs, optlearner_outputs = LatentConv1DOptLearnerStaticArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
-else:
-    raise ValueError("Architecture '{}' not recognised".format(ARCHITECTURE))
+optlearner_inputs, optlearner_outputs = architecture_inputs_and_outputs(ARCHITECTURE, param_trainable, emb_initialiser, smpl_params, input_info, faces, data_samples, INPUT_TYPE)
 print("optlearner inputs " +str(optlearner_inputs))
 print("optlearner outputs "+str(optlearner_outputs))
 optlearner_model = Model(inputs=optlearner_inputs, outputs=optlearner_outputs)
 print_summary_fn = print_summary_wrapper(exp_dir)
 optlearner_model.summary(print_fn=print_summary_fn)
+#exit(1)
 
 # Model options
 #run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
@@ -377,6 +360,22 @@ elif INPUT_TYPE == "3D_POINTS":
             0.0, # difference angle loss (L_xent)
             ]
 
+if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+    optlearner_loss += [false_loss]
+    optlearner_loss_weights += [0.0]
+
+if ARCHITECTURE == "RotConv1DOptLearnerArchitecture" or ARCHITECTURE == "ConditionalOptLearnerArchitecture":
+    optlearner_loss += [false_loss, false_loss, false_loss, false_loss]
+    optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0]
+    #optlearner_loss += [false_loss, false_loss, false_loss, false_loss, false_loss, false_loss]
+    #optlearner_loss_weights += [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+if ARCHITECTURE == "ProbCNNOptLearnerStaticArchitecture" or ARCHITECTURE == "GatedCNNOptLearnerArchitecture":
+    optlearner_loss += [false_loss, false_loss, false_loss]
+    optlearner_loss_weights += [0.0, 0.0, 0.0]
+
+print("optlearner_loss length: " + str(len(optlearner_loss)))
+print("optlearner_loss_weights length: " + str(len(optlearner_loss_weights)))
 optlearner_model.compile(optimizer=optimizer, loss=optlearner_loss, loss_weights=optlearner_loss_weights,
                                             metrics={"delta_d_hat_sin_output": false_loss}
                                             #metrics={"delta_d_hat_sin_output": trainable_param_metric([int(param[6:8]) for param in trainable_params])}
@@ -388,11 +387,14 @@ optlearner_model.compile(optimizer=optimizer, loss=optlearner_loss, loss_weights
 # Callback for distractor unit
 #weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, X_params)
 if USE_GENERATOR:
-    weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, generator=update_generator)
+    weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, generator=update_generator, offset_nt=OFFSET_NT, pose_offset=POSE_OFFSET)
 else:
-    weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model)
+    weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, offset_nt=OFFSET_NT, pose_offset=POSE_OFFSET)
 weight_cb = LambdaCallback(on_epoch_end=lambda epoch, logs: weight_cb_wrapper(epoch, logs))
 
+
+# Callback for loss plotting during training
+plotting_cb = OptLearnerLossGraphCallback(exp_dir, graphing_period=100)
 
 """ Training loop"""
 
@@ -417,8 +419,9 @@ if USE_GENERATOR:
             update_generator,
             steps_per_epoch=data_samples//BATCH_SIZE,
             epochs=EPOCHS,
-            max_queue_size=1,
-            callbacks=[model_save_checkpoint, weight_cb, epoch_pred_cb],
+            #max_queue_size=1,
+            callbacks=[model_save_checkpoint, weight_cb, epoch_pred_cb, plotting_cb],
+            #callbacks=[model_save_checkpoint, weight_cb, epoch_pred_cb],
             #callbacks=[weight_cb],
             shuffle=True,
             use_multiprocessing=False,
@@ -437,7 +440,8 @@ else:
             #callbacks=[epoch_pred_cb, model_save_checkpoint, opt_cb, weight_cb],
             #callbacks=[epoch_pred_cb, model_save_checkpoint, opt_cb],
             #callbacks=[epoch_pred_cb, model_save_checkpoint, weight_cb],
-            callbacks=[model_save_checkpoint, weight_cb, epoch_pred_cb],
+            callbacks=[model_save_checkpoint, weight_cb, epoch_pred_cb, plotting_cb],
+            #callbacks=[model_save_checkpoint, weight_cb, epoch_pred_cb],
             #callbacks=[epoch_pred_cb, tensorboard_cb],
             #callbacks=[epoch_pred_cb],
             )

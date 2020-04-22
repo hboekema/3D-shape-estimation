@@ -4,6 +4,9 @@ import json
 import numpy as np
 import keras.backend as K
 import tensorflow as tf
+import matplotlib
+#matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import cv2
 from copy import copy
@@ -18,6 +21,10 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
         # Open the log files
         epoch_log_path = os.path.join(log_path, "losses.txt")
         self.epoch_log = open(epoch_log_path, mode='wt', buffering=1)
+
+        params_mse_log_path = os.path.join(log_path, "params_mse.txt")
+        os.system("touch " + params_mse_log_path)
+        self.params_mse_log = open(params_mse_log_path, mode='wt', buffering=1)
 
         delta_d_log_path = os.path.join(log_path, "delta_d.txt")
         os.system("touch " + delta_d_log_path)
@@ -37,7 +44,7 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
         # Store the prediction and optimisation periods
         self.period = period
 
-        # Store model
+        # Store model and architecture
         self.model = None
 
         # Store trainable parameter names
@@ -77,35 +84,56 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                     #print("data value: " + str(data))
                     gen_path = self.generator_paths[data_type]
                     if gen_path is not None:
-                        with np.load(gen_path, allow_pickle=True) as temp_data:
-                            data = [temp_data["indices"], temp_data["params"], temp_data["pcs"]]
+                        gen_path = gen_path + "cb_samples_E{}.npz".format(epoch)
+                        try:
+                            with np.load(gen_path, allow_pickle=True) as temp_data:
+                                print(temp_data.keys())
+                                if "trainable_params" in temp_data.keys():
+                                    data = [temp_data["indices"], temp_data["params"], temp_data["pcs"], temp_data["trainable_params"]]
+                                else:
+                                    data = [temp_data["indices"], temp_data["params"], temp_data["pcs"]]
+                        except Exception as e:
+                            print("Skipping - load failed with exception '{}'".format(e))
+                            return None
 
                     data_dict = {"embedding_index": np.array(data[0]), "gt_params": np.array(data[1]), "gt_pc": np.array(data[2])}
+                    if len(data) == 4:
+                        data_dict["trainable_params"] = np.array(data[3])
                     preds = self.model.predict(data_dict) #, batch_size=len(data[0]))
 
                     print(str(data_type))
                     print("------------------------------------")
 
-                    metrics_names = self.model.metrics_names[:-2]
+                    #metrics_names = self.model.metrics_names[:-2]
+                    metrics_names = self.model.metrics_names[:-1]
+                    #print(metrics_names)
                     output_names = [metric[:-5] for i, metric in enumerate(metrics_names) if i > 0]
                     preds_dict = {output_name: preds[i] for i, output_name in enumerate(output_names)}
                     #print(preds_dict)
                     #exit(1)
 
+                    #print("GT SMPL for first example: " + str(data[1][0]))
+                    #print("Diff for first example: " + str(data[1][0] - preds_dict["learned_params"][0]))
+
                     self.delta_d_log.write('epoch {:05d}\n'.format(epoch + 1))
                     param_diff_sines = np.abs(np.sin(0.5*(data[1] - preds_dict["learned_params"])))
                     delta_d_diff_sines = np.abs(np.sin(0.5*(preds_dict["delta_d"] - preds_dict["delta_d_hat"])))
                     trainable_diff_sines = []
-                    for parameter in self.trainable_params:
+                    for i, parameter in enumerate(self.trainable_params):
                         param_int = int(parameter[6:])
                         trainable_diff_sines.append(param_diff_sines[:, param_int])
                         print("Parameter: " + str(parameter))
                         print("GT SMPL: " + str(data[1][:, param_int]))
                         print("Parameters: " + str(preds_dict["learned_params"][:, param_int]))
                         print("Parameter ang. MAE: " + str(param_diff_sines[:, param_int]))
+                        if "delta_d_hat_mu" in preds_dict.keys():
+                            print("Delta_d_hat_mu: " + str(preds_dict["delta_d_hat_mu"][:, param_int]))   # ProbCNN architecture only
+                            print("Delta_d_hat_sigma: " + str(preds_dict["delta_d_hat_sigma"][:, param_int]))   # ProbCNN architecture only
                         print("Delta_d: " + str(preds_dict["delta_d"][:, param_int]))
                         print("Delta_d_hat: " + str(preds_dict["delta_d_hat"][:, param_int]))
+                        #print("Delta_d_hat: " + str(preds_dict["delta_d_hat"][:, i+1]))
                         print("Difference sine: " + str(delta_d_diff_sines[:, param_int]))
+                        #print("Difference sine: " + str(delta_d_diff_sines[:, i]))
                         #print("Delta_d_hat loss: " + str(preds_dict["delta_d_hat_mse"]))
                         #print("Difference sine (direct): " + str(np.sin(preds_dict["delta_d"] - preds_dict["delta_d_hat"])[:, param_int]))
                         #print("Difference sine (from normals): " + str(preds_dict["diff_angles"]))
@@ -114,7 +142,42 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                         #self.delta_d_log.write('parameter: ' + str(parameter) + '\n' + 'Delta_d: ' + str(preds[6][:, param_int]) + '\n')
                         self.delta_d_log.write('parameter: ' + str(parameter) + '\n' + 'Delta_d: ' + str(preds[7][:, param_int]) + '\n')
 
+                    if "params_mse" in preds_dict.keys():
+                        params_mse = np.mean(preds_dict["params_mse"], axis=0)
+                        print("Params MSE: " + str(params_mse))
+                        self.params_mse_log.write('epoch {:05d}\n'.format(epoch + 1))
+                        self.params_mse_log.write(str(params_mse) + "\n")
+
+                    #print("Predictions for first example: " + str(preds_dict["delta_d_hat"][0]))
+                    if "rot3d_pose" in preds_dict.keys():
+                        #print("rot3d_pose trace: " + str(np.trace(preds_dict["rot3d_pose"][0], axis1=1, axis2=2)))
+                        #print("rot3d_delta_d_pose trace: " + str(np.trace(preds_dict["rot3d_delta_d_pose"][0], axis1=1, axis2=2)))
+                        #print("rot3d_pose: " + str(preds_dict["rot3d_pose"][0]))   # RotConv1d architecture only
+                        #print("rot3d_delta_d_pose: " + str(preds_dict["rot3d_delta_d_pose"][0]))   # RotConv1d architecture only
+                        print("rot3d_pose error: " + str(preds_dict["rot3d_pose"][0] - preds_dict["rot3d_delta_d_pose"][0]))   # RotConv1d architecture only
+                        #pass
+                    if "mapped_pose" in preds_dict.keys():
+                        #print("mapped_pose: " + str(preds_dict["mapped_pose"][0]))   # RotConv1d architecture only
+                        #print("mapped_delta_d_pose: " + str(preds_dict["mapped_delta_d_pose"][0]))   # RotConv1d architecture only
+                        print("mapped_pose error: " + str(preds_dict["mapped_pose"][0] - preds_dict["mapped_delta_d_pose"][0]))   # RotConv1d architecture only
+                        pass
+                    if "rodrigues_delta_d_pose" in preds_dict.keys():
+                        #print("rodrigues pose error: " + str(preds_dict["rodrigues_delta_d_pose"][0] - preds_dict["delta_d_pose_vec"][0]))
+                        pass
+
                     avg_diff_sines = np.mean(trainable_diff_sines, axis=0)
+
+                    if epoch == -1:
+                        # print parameters to file
+                        gt_example_parameters = data[1]
+                        pred_example_parameters = preds_dict["learned_params"]
+                        diff_example_parameters = gt_example_parameters - pred_example_parameters
+                        param_save_dir = self.pred_path + "/example_parameters/"
+                        os.system('mkdir ' + str(param_save_dir))
+
+                        np.savetxt(param_save_dir + "gt_params.txt", gt_example_parameters)
+                        np.savetxt(param_save_dir + "pred_params.txt", pred_example_parameters)
+                        np.savetxt(param_save_dir + "diff.txt", diff_example_parameters)
 
                     # Track resets
                     BLOCK_SIZE = self.data_samples / self.RESET_PERIOD
@@ -170,6 +233,9 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                             # Write to the image
                             font                   = cv2.FONT_HERSHEY_SIMPLEX
                             bottomLeftCorner       = (550,30)
+                            gt_main_rot            = (0, 70)
+                            pred_main_rot          = (0, 50)
+                            delta_d_hat_pos        = (0, 90)
                             fontScale              = 0.6
                             fontColor              = (0,0,255)
                             lineType               = 2
@@ -180,6 +246,26 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                                     fontColor,
                                     lineType)
 
+                            cv2.putText(silh_comp_rgb, "Main rot.: " +str(preds_dict["learned_params"][i-1, 0:3]),
+                                    pred_main_rot,
+                                    font,
+                                    fontScale,
+                                    fontColor,
+                                    lineType)
+
+                            cv2.putText(silh_comp_rgb, "GT Main rot.: " +str(data[1][i-1, 0:3]),
+                                    gt_main_rot,
+                                    font,
+                                    fontScale,
+                                    fontColor,
+                                    lineType)
+
+                            cv2.putText(silh_comp_rgb, "delta_d_hat: " +str(preds_dict["delta_d_hat"][i-1, 0:3]),
+                                    delta_d_hat_pos,
+                                    font,
+                                    fontScale,
+                                    fontColor,
+                                    lineType)
                             # Add image to list
                             silh_comp_list.append(silh_comp_rgb)
 
@@ -208,6 +294,69 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                                     fontColor,
                                     lineType)
                         cv2.imwrite(os.path.join(self.pred_path, "{}_epoch.{:05d}.silh_comps.png".format(data_type, epoch + 1)), silh_comps_rgb.astype("uint8"))
+
+
+class OptLearnerLossGraphCallback(tf.keras.callbacks.Callback):
+    def __init__(self, run_dir, graphing_period=100):
+        self.run_dir = run_dir
+        self.graphing_period = graphing_period
+        os.system("mkdir " + str(self.run_dir) + "plots/")
+
+    def plot_losses(self, epoch, show=False):
+        loss_path = self.run_dir + "/logs/losses.txt"
+
+        losses_to_load = ["loss", "delta_d_hat_mse_loss", "pc_mean_euc_dist_loss", "delta_d_mse_loss", "diff_angle_mse_loss"]
+        loss_alias = ["loss", "deep opt. loss", "point cloud loss", "smpl loss", "angle loss"]
+        loss_display_name = [alias + " (" + losses_to_load[i] + ")" for i, alias in enumerate(loss_alias)]
+        loss_display_name_dict = {losses_to_load[i]: loss_display_name[i] for i in range(len(losses_to_load))}
+        scale_presets = [0.001, 1, 1, 1, 1]
+        scale_presets_dict = {losses_to_load[i]: scale_presets[i] for i in range(len(losses_to_load))}
+        #style_presets = [".", "+", "v", "s", ","]
+        style_preset = '.'
+        color_presets = ["r", "b", "g", "k", "y"]
+        color_presets_dict = {losses_to_load[i]: color_presets[i] for i in range(len(losses_to_load))}
+
+        column_names = []
+        styles = []
+        colors = []
+        if epoch <= 100:
+            SUBSAMPLE_PERIOD = 10
+        else:
+            SUBSAMPLE_PERIOD = 20
+
+        # Load the loss files
+        dir_losses = {}
+        for loss in losses_to_load:
+            dir_losses[loss] = []
+        with open(loss_path, mode='r') as f:
+            for i, s in enumerate(f.readlines()):
+                if i > 0:
+                    s = json.loads(s)
+                    if s["epoch"] % SUBSAMPLE_PERIOD == 0:
+                        for loss in losses_to_load:
+                            dir_losses[loss].append(float(s.get(loss)))
+
+        for loss_name, loss_values in dir_losses.items():
+            plt.plot(np.arange(len(loss_values))*SUBSAMPLE_PERIOD, scale_presets_dict[loss_name]*np.array(loss_values), markersize=6, linewidth=1, marker=style_preset, color=color_presets_dict[loss_name], label=loss_display_name_dict[loss_name])
+        plt.ylabel("Loss value", fontsize=16)
+        plt.xlabel("Epoch", fontsize=16)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
+        plt.legend(prop={'size': 8})
+        plt.savefig("{}/plots/plot_E{:05d}.png".format(self.run_dir, epoch))
+        if show:
+            plt.show()
+        plt.clf()
+
+    def set_model(self, model):
+        self.model = model
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch > 0 and epoch % self.graphing_period == 0:
+            try:
+                self.plot_losses(epoch)
+            except Exception as exc:
+                print("Plotting failed with exception: '{}'".format(exc))
 
 
 class OptimisationCallback(tf.keras.callbacks.Callback):
