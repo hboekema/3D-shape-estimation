@@ -6,6 +6,7 @@ GENERAL:
     #GPU_ID: "4"
     #GPU_ID: "5"
     #GPU_ID: "6"
+    #GPU_ID: "7"
 
 BASIC:
     #RESET_PERIOD: 1000000
@@ -23,8 +24,8 @@ BASIC:
     MODEL_SAVE_PERIOD: 50
     #MODEL_SAVE_PERIOD: 500000
     #PREDICTION_PERIOD: 1
-    #PREDICTION_PERIOD: 5
-    PREDICTION_PERIOD: 10
+    PREDICTION_PERIOD: 5
+    #PREDICTION_PERIOD: 10
     #PREDICTION_PERIOD: 100
     #PREDICTION_PERIOD: 10000
     OPTIMISATION_PERIOD: 50
@@ -34,6 +35,8 @@ BASIC:
     #DISTRACTOR: 0.5
     #DISTRACTOR: {"other": 0.3} 
     #DISTRACTOR: {"param_01": "pi", "param_56": "pi", "param_59": "pi", "other": 0.0}
+    #DISTRACTOR: {"other": 0.17}
+    #DISTRACTOR: {"param_01": "pi", "other": 0.17}
     #DISTRACTOR: {"param_01": "pi", "other": 0.3}
     DISTRACTOR: {"param_01": "pi", "other": 1.0}
     #DISTRACTOR: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.3}
@@ -50,6 +53,7 @@ BASIC:
     NUM_SAMPLES: 10000
     #NUM_SAMPLES: 20000
     #NUM_SAMPLES: 100000
+    NUM_CB_SAMPLES: 5
     ROT_MODE: "RODRIGUES"
     #ROT_MODE = "EULER"
 
@@ -57,17 +61,20 @@ DATA:
     #POSE_OFFSET: 0.0
     #POSE_OFFSET: {"other": 0.3}
     #POSE_OFFSET: {"other": "pi"} 
+    #POSE_OFFSET: {"param_01": "pi", "other": 0.17}
     #POSE_OFFSET: {"param_01": "pi", "other": 0.3}
-    #POSE_OFFSET: {"param_01": "pi", "other": 1.0}
+    POSE_OFFSET: {"param_01": "pi", "other": 1.0}
     #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.0}
     #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.3}
-    POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 1.0}
+    #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 1.0}
     OFFSET_NT: False 
     #OFFSET_NT: True 
     #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "shape_other": 3.0}
-    #PARAMS_TO_OFFSET: "trainable_params"
-    PARAMS_TO_OFFSET: "all_pose_and_global_rotation"
-    
+    PARAMS_TO_OFFSET: "trainable_params"
+    #PARAMS_TO_OFFSET: "all_pose_and_global_rotation"
+    DIST: "uniform"
+    #DIST: "gaussian"
+
     # Will always result in data being generated instead of loaded
     USE_GENERATOR: True
     #USE_GENERATOR: False
@@ -81,7 +88,7 @@ DATA:
 
 PARAMS:
     #TRAINABLE: "all_pose"
-    #TRAINABLE: "all_pose_and_global_rotation"
+    TRAINABLE: "all_pose_and_global_rotation"
  
     # Test conditional kinematic levels (3D)
     #TRAINABLE: ["param_00", "param_01", "param_02"] 
@@ -131,7 +138,7 @@ PARAMS:
     # 1D 20 joints and global rotation
     #TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_29", "param_32", "param_35", "param_38", "param_41", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59"] 
     # 1D 18 joints and global rotation
-    TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_32", "param_35", "param_38", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59"] 
+    #TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_32", "param_35", "param_38", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59"] 
     # 1D 16 joints and global rotation
     #TRAINABLE: ["param_01", "param_05", "param_08", "param_11",  "param_14", "param_17", "param_20", "param_23", "param_26", "param_44", "param_47", "param_50", "param_53", "param_56", "param_59", "param_62", "param_65"] 
     #TRAINABLE: ["param_01", "param_03", "param_06", "param_09", "param_12", "param_15", "param_29", "param_38",  "param_41",  "param_44", "param_47", "param_50", "param_53", "param_59", "param_56", "param_62", "param_65"] 
@@ -168,26 +175,29 @@ MODEL:
     #ARCHITECTURE: "Conv1DFullOptLearnerStaticArchitecture"
     #ARCHITECTURE: "GAPConv1DOptLearnerStaticArchitecture"
     #ARCHITECTURE: "DeepConv1DOptLearnerStaticArchitecture"
-    ARCHITECTURE: "NewDeepConv1DOptLearnerArchitecture" 
+    #ARCHITECTURE: "NewDeepConv1DOptLearnerArchitecture" 
     #ARCHITECTURE: "ResConv1DOptLearnerStaticArchitecture"
     #ARCHITECTURE: "ProbCNNOptLearnerStaticArchitecture"
     #ARCHITECTURE: "GatedCNNOptLearnerArchitecture" 
     #ARCHITECTURE: "LatentConv1DOptLearnerStaticArchitecture"
     #ARCHITECTURE: "RotConv1DOptLearnerArchitecture"
-    #ARCHITECTURE: "ConditionalOptLearnerArchitecture"
+    ARCHITECTURE: "ConditionalOptLearnerArchitecture"
+    #ARCHITECTURE: "GroupedConv1DOptLearnerArchitecture" 
     #INPUT_TYPE: "3D_POINTS"
     INPUT_TYPE: "MESH_NORMALS"
     LEARNING_RATE: 0.005
     #LEARNING_RATE: 0.002
     #LEARNING_RATE: 0.001
-    DELTA_D_LOSS_WEIGHT: 500 
+    #DELTA_D_LOSS_WEIGHT: 500 
     #DELTA_D_LOSS_WEIGHT: 200
     #DELTA_D_LOSS_WEIGHT: 100
+    #DELTA_D_LOSS_WEIGHT: 50
+    DELTA_D_LOSS_WEIGHT: 10
     #DELTA_D_LOSS_WEIGHT: 0
     #PC_LOSS_WEIGHT: 500
     #PC_LOSS_WEIGHT: 200
-    PC_LOSS_WEIGHT: 100
-    #PC_LOSS_WEIGHT: 10
+    #PC_LOSS_WEIGHT: 100
+    PC_LOSS_WEIGHT: 10
     #PC_LOSS_WEIGHT: 1
     #PC_LOSS_WEIGHT: 0 
     #DELTA_D_HAT_LOSS_WEIGHT: 10
@@ -202,3 +212,19 @@ MODEL:
 
 TEST:
     test_iterations: 200
+    learning_rates: [0.500, 1.000, 0.125]
+    num_test_samples: 5
+
+    #joint_levels: 
+    #joint_levels: [[0],[1],[2],[3],[4],[5],[6],[7],[8],[9],[10],[11],[12],[13],[14],[15],[16],[17],[18],[19],[20],[21],[22],[23]]
+    joint_levels: [
+            [0],
+            [3],
+            [1,2,6],
+            [4,5,9],
+            [7,8,12,13,14],
+            [10,11,15,16,17],
+            [18,19],
+            [20,21],
+            [22,23]
+            ]

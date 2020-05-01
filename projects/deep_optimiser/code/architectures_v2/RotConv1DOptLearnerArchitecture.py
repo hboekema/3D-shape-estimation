@@ -263,9 +263,7 @@ def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, 
     print('delta_d_hat shape: '+str(delta_d_hat.shape))
     #exit(1)
 
-    false_sin_loss_delta_d_hat = geodesic_loss(rot3d_delta_d_pose, rot3d_pose)
-    false_sin_loss_delta_d_hat = Reshape((1,))(false_sin_loss_delta_d_hat)
-    #false_sin_loss_delta_d_hat = get_angular_distance_metric(delta_d_NOGRAD, delta_d_hat)
+    false_sin_loss_delta_d_hat = get_angular_distance_metric(delta_d_NOGRAD, delta_d_hat)
     #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
     #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
     false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_sin_loss_delta_d_hat)

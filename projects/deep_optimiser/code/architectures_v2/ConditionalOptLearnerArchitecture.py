@@ -19,7 +19,7 @@ from render_mesh import Mesh
 from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, get_angular_distance_metric, emb_init_weights, rot3d_from_euler, euler_from_rot3d, rot3d_from_ortho6d, ortho6d_from_rot3d, rot3d_from_rodrigues, rodrigues_from_rot3d, geodesic_loss, angle_between_vectors
 
 
-def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
+def ConditionalOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
     """ Optimised learner network architecture """
     # An embedding layer is required to optimise the parameters
     optlearner_input = Input(shape=(1,), name="embedding_index")
@@ -40,9 +40,6 @@ def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, 
     # Compute the true offset (i.e. difference) between the ground truth and learned parameters
     pi = K.constant(np.pi)
     delta_d = Lambda(lambda x: x[0] - x[1], name="delta_d")([gt_params, optlearner_params])
-    #delta_d = Lambda(lambda x: x[0] - x[1], name="delta_d_no_mod")([gt_params, optlearner_params])
-    #delta_d = Lambda(lambda x: K.tf.math.floormod(x - pi, 2*pi) - pi, name="delta_d")(delta_d)  # custom modulo 2pi of delta_d
-    #delta_d = custom_mod(delta_d, pi, name="delta_d")  # custom modulo 2pi of delta_d
     print("delta_d shape: " + str(delta_d.shape))
     #exit(1)
 
@@ -57,8 +54,6 @@ def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, 
     optlearner_pc = get_pc(optlearner_params, smpl_params, input_info, faces)  # UNCOMMENT
     print("optlearner_pc shape: " + str(optlearner_pc.shape))
     #exit(1)
-    #optlearner_pc = Dense(6890*3)(delta_d)
-    #optlearner_pc = Reshape((6890, 3))(optlearner_pc)
 
     # Get the (batched) Euclidean loss between the learned and ground truth point clouds
     pc_euclidean_diff = Lambda(lambda x: x[0] -  x[1])([gt_pc, optlearner_pc])
@@ -100,8 +95,6 @@ def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, 
     dist_angles_NOGRAD =  Lambda(lambda x: K.stop_gradient(x))(dist_angles)
     print("diff_angles shape: " + str(diff_angles.shape))
     print("dist_angles shape: " + str(dist_angles.shape))
-    #pc_euclidean_diff_NOGRAD =  Lambda(lambda x: K.stop_gradient(x))(pc_euclidean_diff) # This is added to avoid influencing embedding layer parameters by a "bad" gradient network
-    #print("diff_normals_NOGRAD shape: " + str(diff_normals_NOGRAD.shape))
     diff_normals_NOGRAD = Flatten()(diff_normals_NOGRAD)
     diff_angles_NOGRAD = Flatten()(diff_angles_NOGRAD)
     mesh_diff_NOGRAD = Concatenate()([diff_normals_NOGRAD, dist_angles_NOGRAD])
@@ -109,11 +102,7 @@ def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, 
     if input_type == "3D_POINTS":
         optlearner_architecture = Dense(2**9, activation="relu")(vertex_diff_NOGRAD)
     if input_type == "MESH_NORMALS":
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_norm_NOGRAD)
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_NOGRAD)
         optlearner_architecture = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
-    #optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     optlearner_architecture = Reshape((optlearner_architecture.shape[1].value, 1))(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
@@ -121,152 +110,83 @@ def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, 
     optlearner_architecture = Conv1D(128, 5, strides=2, activation="relu")(optlearner_architecture)
     optlearner_architecture = Conv1D(256, 3, strides=2, activation="relu")(optlearner_architecture)
     optlearner_architecture = Conv1D(512, 3, strides=2, activation="relu")(optlearner_architecture)
-    #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
-    #optlearner_architecture = Flatten()(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
     optlearner_architecture = Reshape((-1,))(optlearner_architecture)
     print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
 
     # Learn a 6D representation of the parameters
-    mapped_pose = Dense(24*6, activation="linear", name="mapped_pose")(optlearner_architecture)
-    shape_params = Dense(10, activation="linear", name="shape_params")(optlearner_architecture)
-    mapped_trans = Dense(6, activation="linear", name="mapped_trans")(optlearner_architecture)
+    trainable_params = [int(param[6:8]) for param, trainable in param_trainable.items() if trainable]
+    trainable_joints = 3*np.unique([param // 3 for param in trainable_params])
+    trainable_params = np.ravel([[param, param+1, param+2] for param in trainable_joints])
+    print("trainable_params in conditional network: " +str(trainable_params))
+    num_trainable_joints = len(trainable_joints)
+    num_trainable_params = len(trainable_params)
+    mapped_pose = Dense(num_trainable_joints*6, activation="linear", name="mapped_pose")(optlearner_architecture)
 
     # Reshape mapped predictions into vectors
-    mapped_pose_vec = Reshape((24, 3, 2), name="mapped_pose_mat")(mapped_pose)
-    mapped_trans_vec = Reshape((1, 3, 2), name="mapped_trans_mat")(mapped_trans)
+    mapped_pose_vec = Reshape((num_trainable_joints, 3, 2), name="mapped_pose_mat")(mapped_pose)
     print("mapped_pose shape: " + str(mapped_pose_vec.shape))
-    print("mapped_trans shape: " + str(mapped_trans_vec.shape))
 
     # Convert 6D representation to rotation matrix in SO(3)
     rot3d_pose = rot3d_from_ortho6d(mapped_pose_vec)
-    rot3d_trans = rot3d_from_ortho6d(mapped_trans_vec)
     rot3d_pose = Lambda(lambda x: x, name="rot3d_pose")(rot3d_pose)
-    rot3d_trans = Lambda(lambda x: x, name="rot3d_trans")(rot3d_trans)
     print("rot3d_pose shape: " + str(rot3d_pose.shape))
-    print("rot3d_trans shape: " + str(rot3d_trans.shape))
 
     # Cast GT difference SO(3) representation to 6D for loss calculation
     delta_d_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(delta_d)
-    delta_d_pose = Lambda(lambda x: x[:, 0:72])(delta_d_NOGRAD)
-    delta_d_shape = Lambda(lambda x: x[:, 72:82])(delta_d_NOGRAD)
-    delta_d_trans = Lambda(lambda x: x[:, 82:85])(delta_d_NOGRAD)
+    delta_d_pose = Lambda(lambda x: K.tf.gather(x, np.array(trainable_params), axis=1))(delta_d_NOGRAD)
     print("delta_d_pose shape: " + str(delta_d_pose.shape))
-    print("delta_d_shape shape: " + str(delta_d_shape.shape))
-    print("delta_d_trans shape: " + str(delta_d_trans.shape))
 
-    delta_d_pose_vec = Reshape((24, 3), name="delta_d_pose_vec")(delta_d_pose)
-    delta_d_trans_vec = Reshape((1, 3), name="delta_d_trans_vec")(delta_d_trans)
+    delta_d_pose_vec = Reshape((num_trainable_joints, 3), name="delta_d_pose_vec")(delta_d_pose)
     print("delta_d_pose_vec shape: " + str(delta_d_pose_vec.shape))
-    print("delta_d_trans_vec shape: " + str(delta_d_trans_vec.shape))
 
     #rot3d_delta_d_pose = rot3d_from_euler(delta_d_pose_vec)
     #rot3d_delta_d_trans = rot3d_from_euler(delta_d_trans_vec)
     rot3d_delta_d_pose = rot3d_from_rodrigues(delta_d_pose_vec)
-    rot3d_delta_d_trans = rot3d_from_rodrigues(delta_d_trans_vec)
     rot3d_delta_d_pose = Lambda(lambda x: x, name="rot3d_delta_d_pose")(rot3d_delta_d_pose)
-    rot3d_delta_d_trans = Lambda(lambda x: x, name="rot3d_delta_d_trans")(rot3d_delta_d_trans)
     print("rot3d_delta_d_pose shape: " + str(rot3d_delta_d_pose.shape))
-    print("rot3d_delta_d_trans shape: " + str(rot3d_delta_d_trans.shape))
 
     mapped_delta_d_pose_vec = ortho6d_from_rot3d(rot3d_delta_d_pose)
-    mapped_delta_d_trans_vec = ortho6d_from_rot3d(rot3d_delta_d_trans)
     print("mapped_delta_d_pose_vec shape: " + str(mapped_delta_d_pose_vec.shape))
-    print("mapped_delta_d_trans_vec shape: " + str(mapped_delta_d_trans_vec.shape))
 
-    mapped_delta_d_pose = Reshape((24*3*2,), name="mapped_delta_d_pose")(mapped_delta_d_pose_vec)
-    mapped_delta_d_trans = Reshape((1*3*2,), name="mapped_delta_d_trans")(mapped_delta_d_trans_vec)
+    mapped_delta_d_pose = Reshape((num_trainable_joints*3*2,), name="mapped_delta_d_pose")(mapped_delta_d_pose_vec)
     print("mapped_delta_d_pose shape: " + str(mapped_delta_d_pose.shape))
-    print("mapped_delta_d_trans shape: " + str(mapped_delta_d_trans.shape))
-    mapped_delta_d = Concatenate(name="mapped_delta_d")([mapped_delta_d_pose, delta_d_shape, mapped_delta_d_trans])
+    mapped_delta_d = Lambda(lambda x: x, name="mapped_delta_d")(mapped_delta_d_pose)
     print("mapped_delta_d shape: " + str(mapped_delta_d.shape))
     #exit(1)
 
     # Calculate L2-norm on 6D orthogonal representation or geodesic loss on SO(3) representation
-    mapped_delta_d_hat = Concatenate(name="mapped_delta_d_hat")([mapped_pose, shape_params, mapped_trans])
+    mapped_delta_d_hat = Lambda(lambda x: x, name="mapped_delta_d_hat")(mapped_pose)
     print("mapped_delta_d_hat shape: " + str(mapped_delta_d_hat.shape))
     #exit(1)
     mapped_delta_d_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(mapped_delta_d)
 
     # L2-norm loss on 6D representation
     false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1))([mapped_delta_d_NOGRAD, mapped_delta_d_hat])
-    # 'Angular' loss between vectors in 6D representation
-    mapped_pose_vec1 = Lambda(lambda x: x[:, :, :, 0])(mapped_pose_vec)
-    mapped_pose_vec2 = Lambda(lambda x: x[:, :, :, 1])(mapped_pose_vec)
-    mapped_delta_d_pose_vec1 = Lambda(lambda x: x[:, :, :, 0])(mapped_delta_d_pose_vec)
-    mapped_delta_d_pose_vec2 = Lambda(lambda x: x[:, :, :, 1])(mapped_delta_d_pose_vec)
-    mapped_trans_vec1 = Lambda(lambda x: x[:, :, :, 0])(mapped_trans_vec)
-    mapped_trans_vec2 = Lambda(lambda x: x[:, :, :, 1])(mapped_trans_vec)
-    mapped_delta_d_trans_vec1 = Lambda(lambda x: x[:, :, :, 0])(mapped_delta_d_trans_vec)
-    mapped_delta_d_trans_vec2 = Lambda(lambda x: x[:, :, :, 1])(mapped_delta_d_trans_vec)
-    pose_dot1 = angle_between_vectors(mapped_pose_vec1, mapped_delta_d_pose_vec1)
-    pose_dot2 = angle_between_vectors(mapped_pose_vec2, mapped_delta_d_pose_vec2)
-    trans_dot1 = angle_between_vectors(mapped_trans_vec1, mapped_delta_d_trans_vec1)
-    trans_dot2 = angle_between_vectors(mapped_trans_vec2, mapped_delta_d_trans_vec2)
-    #false_loss_delta_d_hat_shape = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1))([delta_d_shape, shape_params])
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(x[0] + x[1] + x[2] + x[3], axis=[-2, -1]) + x[-1])([pose_dot1, pose_dot2, trans_dot1, trans_dot2, false_loss_delta_d_hat_shape])
-    # L2-norm loss on rotation matrix in SO(3)
-    #false_loss_delta_d_hat_pose = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=[1, 2, 3]))([rot3d_delta_d_pose, rot3d_pose])
-    #false_loss_delta_d_hat_shape = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1))([delta_d_shape, shape_params])
-    #false_loss_delta_d_hat_trans = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=[1, 2, 3]))([rot3d_delta_d_trans, rot3d_trans])
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.tf.stack(x, axis=-1), axis=-1))([false_loss_delta_d_hat_pose, false_loss_delta_d_hat_shape, false_loss_delta_d_hat_trans])
-    # Geodesic loss on rotation matrix in SO(3)
-    #false_loss_delta_d_hat_pose = geodesic_loss(rot3d_delta_d_pose, rot3d_pose)
-    #false_loss_delta_d_hat_shape = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1))([delta_d_shape, shape_params])
-    #false_loss_delta_d_hat_trans = geodesic_loss(rot3d_delta_d_trans, rot3d_trans)
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.tf.stack(x, axis=-1), axis=-1))([false_loss_delta_d_hat_pose, false_loss_delta_d_hat_shape, false_loss_delta_d_hat_trans])
-
-    # Calculate the loss for direction and magnitude separately
-    #sign_loss = Lambda(lambda x: 0.5*(1. - softsign(10*x[0]*x[1])))([mapped_delta_d_NOGRAD, mapped_delta_d_hat])
-    ##magnitude_loss = Lambda(lambda x: K.abs(K.abs(x[0]) - K.abs(x[1])))([delta_d_NOGRAD, delta_d_hat])
-    #magnitude_loss = Lambda(lambda x: K.exp(K.abs(x[1]) - K.abs(x[0])) )([mapped_delta_d_NOGRAD, mapped_delta_d_hat])
-    #weighting = 0.1
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(x[0] + weighting*x[1], axis=-1))([sign_loss, magnitude_loss])
-    false_loss_delta_d_hat = Reshape(target_shape=(1,), name="delta_d_hat_mse")(false_loss_delta_d_hat)
-    print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
-    #exit(1)
-
-#    # Apply rotation in Euler angles
-#    pos_euler_poses = euler_from_rot3d(rot3d_pose)
-#    pos_euler_trans = euler_from_rot3d(rot3d_trans)
-#    #pos_euler_poses = euler_from_rot3d(rot3d_delta_d_pose)     # DEBUG ONLY
-#    #pos_euler_trans = euler_from_rot3d(rot3d_delta_d_trans)    # DEBUG ONLY
-#    print("pos_euler_poses shape: " + str(pos_euler_poses.shape))
-#    print("pos_euler_trans shape: " + str(pos_euler_trans.shape))
-#
-#    # Only consider first possibility for simplicity - this needs to be taken into account when evaluating predictions
-#    euler_pose = Lambda(lambda x: x[:, :, :, 0], name="euler_pose")(pos_euler_poses)
-#    euler_trans = Lambda(lambda x: x[:, :, :, 0], name="euler_trans")(pos_euler_trans)
-#    #euler_pose = Lambda(lambda x: x[:, :, :, 1], name="euler_pose")(pos_euler_poses)
-#    #euler_trans = Lambda(lambda x: x[:, :, :, 1], name="euler_trans")(pos_euler_trans)
-#    print("euler_pose shape: " + str(euler_pose.shape))
-#    print("euler_trans shape: " + str(euler_trans.shape))
-#
-#    # Reshape
-#    #delta_d_hat_pose = Reshape((72,), name="delta_d_hat_pose_reshaped")(euler_pose)
-#    #delta_d_hat_trans = Reshape((3,), name="delta_d_hat_trans_reshaped")(euler_trans)
+    false_loss_delta_d_hat = Reshape((1,), name="delta_d_hat_mse")(false_loss_delta_d_hat)
 
     # Apply rotation in Rodrigues angles
     rodrigues_pose = rodrigues_from_rot3d(rot3d_pose)
-    rodrigues_trans = rodrigues_from_rot3d(rot3d_trans)
     print("rodrigues_pose shape: " + str(rodrigues_pose.shape))
-    print("rodrigues_trans shape: " + str(rodrigues_trans.shape))
-    delta_d_hat_pose = Reshape((72,), name="delta_d_hat_pose_reshaped")(rodrigues_pose)
-    delta_d_hat_trans = Reshape((3,), name="delta_d_hat_trans_reshaped")(rodrigues_trans)
+    delta_d_hat_pose = Reshape((num_trainable_params,), name="delta_d_hat_pose_reshaped")(rodrigues_pose)
     print("delta_d_hat_pose shape: " + str(delta_d_hat_pose.shape))
-    print("delta_d_hat_trans shape: " + str(delta_d_hat_trans.shape))
     #exit(1)
 
     # Concatenate to form final update vector
-    delta_d_hat = Concatenate(name="delta_d_hat")([delta_d_hat_pose, shape_params, delta_d_hat_trans])
-    #delta_d_hat = Concatenate(name="delta_d_hat")([euler_pose, shape_params, euler_trans])
+   # indices = K.constant(trainable_params, shape=(1, num_trainable_params), dtype="int32")
+   # print("indices shape: " + str(indices.shape))
+   # indices = Lambda(lambda x: K.tf.placeholder_with_default(x, [None, num_trainable_params]))(indices)
+   # print("indices shape: " + str(indices.shape))
+   # zeros = Lambda(lambda x: K.zeros_like(x))(delta_d_NOGRAD)
+   # scatter = Lambda(lambda x: tf.scatter_nd_add(x[0], x[1], x[2]))([zeros, indices, delta_d_hat_pose])
+   # print("scatter shape: " +str(scatter.shape))
+   # exit(1)
+    delta_d_hat = Lambda(lambda x: x, name="delta_d_hat")(delta_d_hat_pose)
     print('delta_d_hat shape: '+str(delta_d_hat.shape))
     #exit(1)
 
-    false_sin_loss_delta_d_hat = geodesic_loss(rot3d_delta_d_pose, rot3d_pose)
-    false_sin_loss_delta_d_hat = Reshape((1,))(false_sin_loss_delta_d_hat)
     #false_sin_loss_delta_d_hat = get_angular_distance_metric(delta_d_NOGRAD, delta_d_hat)
-    #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
+    false_sin_loss_delta_d_hat = get_sin_metric(delta_d_pose, delta_d_hat)
     #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
     false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_sin_loss_delta_d_hat)
     #false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_loss_new_pc)
@@ -276,17 +196,9 @@ def RotConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, 
     delta_d_hat_NOGRAD = Lambda(lambda x: K.stop_gradient(x), name='optlearner_output_NOGRAD')(delta_d_hat)
 
     # False loss designed to pass the learned offset as a gradient to the embedding layer
-    false_loss_smpl = Multiply(name="smpl_diff")([optlearner_params, delta_d_hat_NOGRAD])
+    #false_loss_smpl = Multiply(name="smpl_diff")([optlearner_params, delta_d_hat_NOGRAD])
+    false_loss_smpl = Lambda(lambda x: x, name="smpl_diff")(optlearner_params)
     print("smpl loss shape: " + str(false_loss_smpl.shape))
-
-    # FOR DEBUGGING ONLY!!!
-    #mapped_delta_d_pose_vec = Reshape((24, 3, 2))(mapped_delta_d_pose)
-    #reverse_mapped_delta_d_pose = rot3d_from_ortho6d(mapped_delta_d_pose_vec)
-    #rot3d_pose = Lambda(lambda x: x, name="rot3d_pose")(reverse_mapped_delta_d_pose)
-    #test_rot3d_pose = Lambda(lambda x: x, name="test_rot3d_pose")(reverse_mapped_delta_d_pose)
-    #rodrigues_delta_d_pose = rodrigues_from_rot3d(test_rot3d_pose)
-    #rodrigues_delta_d_pose = rodrigues_from_rot3d(rot3d_delta_d_pose)
-    #rodrigues_delta_d_pose = Lambda(lambda x: x, name="rodrigues_delta_d_pose")(rodrigues_delta_d_pose)
 
     return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles, rot3d_delta_d_pose, rot3d_pose, mapped_pose, mapped_delta_d_pose]
     #return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles, rot3d_delta_d_pose, rot3d_pose, mapped_pose, mapped_delta_d_pose, delta_d_pose_vec, rodrigues_delta_d_pose]

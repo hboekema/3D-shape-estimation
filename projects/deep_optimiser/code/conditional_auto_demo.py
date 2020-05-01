@@ -13,12 +13,18 @@ parser.add_argument("--run_id", help="Identifier of this network pass")
 
 args = parser.parse_args()
 
+#exp_dir = os.getcwd().replace("code", "")
+#exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/Conv1DFullOptLearnerStaticArchitecture_2020-02-18_17:57:17/"
+exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-22_20:19:21/"
+print("Experiment directory: " + str(exp_dir))
+
 # Read in the configurations
 if args.config is not None:
     with open(args.config, 'r') as f:
         setup_params = json.load(f)
 else:
-    with open("./config.yaml", 'r') as f:
+    #with open("./config.yaml", 'r') as f:
+    with open(exp_dir + "code/config.yaml", 'r') as f:
         try:
             setup_params = yaml.safe_load(f)
             #print(setup_params)
@@ -70,7 +76,7 @@ from generate_data import load_data
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 from euler_rodrigues_transform import rodrigues_to_euler
-from training_helpers import offset_params, format_distractor_dict, architecture_output_array, architecture_inputs_and_outputs
+from legacy_training_helpers import offset_params, format_distractor_dict, architecture_output_array, architecture_inputs_and_outputs
 
 
 
@@ -79,9 +85,6 @@ from training_helpers import offset_params, format_distractor_dict, architecture
 #np.random.seed(10)
 np.random.seed(11)
 
-exp_dir = os.getcwd().replace("code", "")
-#exp_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/Conv1DFullOptLearnerStaticArchitecture_2020-02-18_17:57:17/"
-print("Experiment directory: " + str(exp_dir))
 models = os.listdir(exp_dir + "models/")
 if len(models) == 0:
     print("No models for this experiment. Exiting.")
@@ -91,9 +94,11 @@ else:
     model_name = models[0]
     print("Using model '{}'".format(model_name))
 
-learning_rates = [1.000, 0.500, 0.125]
+#learning_rates = [1.000, 0.500, 0.125]
+learning_rates = [0.500, 1.000, 0.125]
 
-save_suffix = ""
+#save_suffix = ""
+save_suffix = "_old_demo_method"
 #save_suffix = "_non-zero_pose"
 model = exp_dir + "models/" + model_name
 logs_dir = exp_dir + "logs/" + model_name + save_suffix + "/"
@@ -222,15 +227,24 @@ if MODE == "EULER":
 X_data = [np.array(X_indices), np.array(X_params), np.array(X_pcs)]
 Y_data = architecture_output_array(ARCHITECTURE, data_samples)
 
+if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+    trainable_params_mask = [int(param_trainable[key]) for key in sorted(param_trainable.keys(), key=lambda x: int(x[6:8]))]
+    #print(trainable_params_mask)
+    trainable_params_mask = np.tile(trainable_params_mask, (data_samples, 1))
+    print("trainable_maks_shape: " + str(trainable_params_mask.shape))
+    X_data += [trainable_params_mask]
+
 x_test = X_data
 y_test = Y_data
 
 # Render silhouettes for the callback data
 num_samples = 5
-cb_indices = X_indices[:num_samples]
-cb_params = X_params[:num_samples]
-cb_pcs = X_pcs[:num_samples]
-X_cb = [np.array(cb_indices), np.array(cb_params), np.array(cb_pcs)]
+cb_samples = [i for i in range(num_samples)]
+#cb_samples = np.linspace(0, data_samples, num_samples, dtype=int)
+#cb_samples[-1] -= 1
+X_cb = [entry[cb_samples] for entry in X_data]
+Y_cb = [entry[cb_samples] for entry in Y_data]
+cb_pcs = X_cb[2]
 silh_cb = []
 for pc in cb_pcs:
     silh = Mesh(pointcloud=pc).render_silhouette(show=False)
@@ -338,6 +352,10 @@ elif INPUT_TYPE == "3D_POINTS":
             0.0, 0.0,
             0.0, # difference angle loss (L_xent)
             ]
+
+if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture" or ARCHITECTURE == "GroupedConv1DOptLearnerArchitecture":
+    optlearner_loss += [false_loss]
+    optlearner_loss_weights += [0.0]
 
 if ARCHITECTURE == "RotConv1DOptLearnerArchitecture":
     optlearner_loss += [false_loss, false_loss, false_loss, false_loss]

@@ -22,10 +22,6 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
         epoch_log_path = os.path.join(log_path, "losses.txt")
         self.epoch_log = open(epoch_log_path, mode='wt', buffering=1)
 
-        params_mse_log_path = os.path.join(log_path, "params_mse.txt")
-        os.system("touch " + params_mse_log_path)
-        self.params_mse_log = open(params_mse_log_path, mode='wt', buffering=1)
-
         delta_d_log_path = os.path.join(log_path, "delta_d.txt")
         os.system("touch " + delta_d_log_path)
         self.delta_d_log = open(delta_d_log_path, mode='wt', buffering=1)
@@ -120,7 +116,7 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                     delta_d_diff_sines = np.abs(np.sin(0.5*(preds_dict["delta_d"] - preds_dict["delta_d_hat"])))
                     trainable_diff_sines = []
                     for i, parameter in enumerate(self.trainable_params):
-                        param_int = int(parameter[6:])
+                        param_int = int(parameter[6:8])
                         trainable_diff_sines.append(param_diff_sines[:, param_int])
                         print("Parameter: " + str(parameter))
                         print("GT SMPL: " + str(data[1][:, param_int]))
@@ -141,12 +137,6 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
 
                         #self.delta_d_log.write('parameter: ' + str(parameter) + '\n' + 'Delta_d: ' + str(preds[6][:, param_int]) + '\n')
                         self.delta_d_log.write('parameter: ' + str(parameter) + '\n' + 'Delta_d: ' + str(preds[7][:, param_int]) + '\n')
-
-                    if "params_mse" in preds_dict.keys():
-                        params_mse = np.mean(preds_dict["params_mse"], axis=0)
-                        print("Params MSE: " + str(params_mse))
-                        self.params_mse_log.write('epoch {:05d}\n'.format(epoch + 1))
-                        self.params_mse_log.write(str(params_mse) + "\n")
 
                     #print("Predictions for first example: " + str(preds_dict["delta_d_hat"][0]))
                     if "rot3d_pose" in preds_dict.keys():
@@ -294,6 +284,41 @@ class OptLearnerPredOnEpochEnd(tf.keras.callbacks.Callback):
                                     fontColor,
                                     lineType)
                         cv2.imwrite(os.path.join(self.pred_path, "{}_epoch.{:05d}.silh_comps.png".format(data_type, epoch + 1)), silh_comps_rgb.astype("uint8"))
+
+
+class GeneratorParamErrorCallback(tf.keras.callbacks.Callback):
+    def __init__(self, run_dir, generator, period=10):
+        log_path = run_dir + "logs/"
+        params_mse_log_path = os.path.join(log_path, "params_mse.txt")
+        os.system("touch " + params_mse_log_path)
+        self.params_mse_log = open(params_mse_log_path, mode='wt', buffering=1)
+
+        self.generator = generator
+        assert period > 0
+        self.period = period
+        self.run_cb = True
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch % self.period == 0 and self.run_cb:
+            data, _ = self.generator.yield_data(epoch)
+
+            data_dict = {"embedding_index": np.array(data[0]), "gt_params": np.array(data[1]), "gt_pc": np.array(data[2])}
+            if len(data) == 4:
+                data_dict["trainable_params"] = np.array(data[3])
+            preds = self.model.predict(data_dict)
+
+            # Process outputs to be easy to read
+            metrics_names = self.model.metrics_names[:-1]
+            output_names = [metric[:-5] for i, metric in enumerate(metrics_names) if i > 0]
+            preds_dict = {output_name: preds[i] for i, output_name in enumerate(output_names)}
+
+            if "params_mse" in preds_dict.keys():
+                params_mse = np.mean(preds_dict["params_mse"], axis=0)
+                print("Params MSE: " + str(params_mse))
+                self.params_mse_log.write('epoch {:05d}\n'.format(epoch + 1))
+                self.params_mse_log.write(str(params_mse) + "\n")
+            else:
+                self.run_cb = False
 
 
 class OptLearnerLossGraphCallback(tf.keras.callbacks.Callback):

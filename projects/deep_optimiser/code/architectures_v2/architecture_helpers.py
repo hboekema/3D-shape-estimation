@@ -86,21 +86,22 @@ def centred_linear(x):
 
 # Custom functions
 # Miscellaneous functions
-def get_mesh_normals(pc, faces, layer_name="mesh_normals"):
-    """ Gather sets of points and compute their cross product to get mesh normals """
-    p0 = Lambda(lambda x: K.tf.gather(x, np.array(faces[:,0]).astype(np.int32), axis=-2))(pc)
-    p1 = Lambda(lambda x: K.tf.gather(x, np.array(faces[:,1]).astype(np.int32), axis=-2))(pc)
-    p2 = Lambda(lambda x: K.tf.gather(x, np.array(faces[:,2]).astype(np.int32), axis=-2))(pc)
-    print("p0 shape: " + str(p0.shape))
-    print("p1 shape: " + str(p1.shape))
-    print("p2 shape: " + str(p2.shape))
-    vec1 = Lambda(lambda x: x[1] - x[0])([p0, p1])
-    vec2 = Lambda(lambda x: x[1] - x[0])([p0, p2])
-    print("vec1 shape: " + str(vec1.shape))
-    print("vec2 shape: " + str(vec2.shape))
-    normals = Lambda(lambda x: K.l2_normalize(K.tf.cross(x[0], x[1]), axis=-1), name=layer_name)([vec1, vec2])
+def reorder_indices(indices_ordering):
+    reordered_indices = []
+    for i in sorted(indices_ordering):
+        reordered_indices.append(indices_ordering.index(i))
+    reordered_indices = K.constant(reordered_indices, dtype=K.tf.int32)
+    print("reordered_indices: " + str(reordered_indices))
 
-    return normals
+    return reordered_indices
+
+def collect_and_order_outputs(group_outputs, reordered_indices):
+    delta_d_hat = Concatenate(axis=-1)(group_outputs)
+    delta_d_hat = Lambda(lambda x: K.tf.gather(x, reordered_indices, axis=-1))(delta_d_hat)
+    print("delta_d_hat shape: " + str(delta_d_hat.shape))
+
+    return delta_d_hat
+
 
 def load_smpl_params():
     # Load SMPL model and get necessary parameters
@@ -173,222 +174,6 @@ def angle_between_vectors(a, b, with_norms=False):
     return theta
 
 
-# Projection helpers
-def rot3d_from_ortho6d(ortho6d, gram_schmidt=True):
-    a1 = Lambda(lambda x: x[:, :, :, 0])(ortho6d)
-    a2 = Lambda(lambda x: x[:, :, :, 1])(ortho6d)
-    print("a1 shape: " + str(a1.shape))
-    print("a2 shape: " + str(a2.shape))
-
-    b1 = Lambda(lambda x: K.tf.nn.l2_normalize(x, dim=-1))(a1)
-    print("b1 shape: " + str(b1.shape))
-    if gram_schmidt:
-        # Use Gram-Schmidt process to find orthogonal vectors
-        b1_projected = Lambda(lambda x: K.tf.reduce_sum(K.tf.multiply(x[1], x[0]), keep_dims=True) * x[1])([a2, b1])
-        b2 = Lambda(lambda x: K.tf.nn.l2_normalize(x[0] - x[1], dim=-1))([a2, b1_projected])
-        print("b2 shape: " + str(b2.shape))
-        b3 = Lambda(lambda x: K.tf.cross(x[0], x[1]))([b1, b2])
-        print("b3 shape: " + str(b3.shape))
-    else:
-        # Use cross products to find orthogonal vectors in R^3
-        b3 = Lambda(lambda x: K.tf.nn.l2_normalize(K.tf.cross(x[0], x[1]), dim=-1))([b1, a2])
-        print("b3 shape: " + str(b3.shape))
-        b2 = Lambda(lambda x: K.tf.cross(x[0], x[1]))([b1, b3])
-        print("b2 shape: " + str(b2.shape))
-
-    R = Lambda(lambda x: K.stack(x, axis=-1))([b1, b2, b3])
-    print("R shape: " + str(R.shape))
-    #R = Reshape((-1, 3, 3))(R)
-    #print("R shape: " + str(R.shape))
-    #exit(1)
-
-    return R
-
-def ortho6d_from_rot3d(rot3d):
-    ortho6d = Lambda(lambda x: x[:, :, :, 0:2])(rot3d)
-    print("ortho_6d shape: " + str(ortho6d.shape))
-    #exit(1)
-    return ortho6d
-
-def rot3d_from_rodrigues(rodrigues):
-    # Convert axis-angle vector of shape [batch_dim, num_joints, 3] to 3D rotation matrix of shape [batch_dim, num_joints, 3, 3]
-    # get the angle of rotation and unit vector
-    epsilon = 1e-8
-    theta = Lambda(lambda x: K.tf.norm(x, axis=-1, keep_dims=True) + epsilon)(rodrigues)
-    print("theta shape: " + str(theta.shape))
-    unit_r = Lambda(lambda x: x[0]/x[1])([rodrigues, theta])
-    print("unit_r shape: " + str(unit_r.shape))
-
-    # Get x-, y-, and z- components of unit axis vector
-    r_x = Lambda(lambda x: K.expand_dims(x[:, :, 0]))(unit_r)
-    r_y = Lambda(lambda x: K.expand_dims(x[:, :, 1]))(unit_r)
-    r_z = Lambda(lambda x: K.expand_dims(x[:, :, 2]))(unit_r)
-    print("r_x shape: " + str(r_x.shape))
-
-    r_xx = Lambda(lambda x: x[0]*x[1])([r_x, r_x])
-    r_yy = Lambda(lambda x: x[0]*x[1])([r_y, r_y])
-    r_zz = Lambda(lambda x: x[0]*x[1])([r_z, r_z])
-    r_xy = Lambda(lambda x: x[0]*x[1])([r_x, r_y])
-    r_xz = Lambda(lambda x: x[0]*x[1])([r_x, r_z])
-    r_yz = Lambda(lambda x: x[0]*x[1])([r_y, r_z])
-    print("r_xx shape: " + str(r_xx.shape))
-
-    c = Lambda(lambda x: K.cos(x))(theta)
-    s = Lambda(lambda x: K.sin(x))(theta)
-    C = Lambda(lambda x: 1-x)(c)
-
-    r_xs = Lambda(lambda x: x[0]*x[1])([r_x, s])
-    r_ys = Lambda(lambda x: x[0]*x[1])([r_y, s])
-    r_zs = Lambda(lambda x: x[0]*x[1])([r_z, s])
-
-    # Construct rotation matrix
-    R11 = Lambda(lambda x: x[0]*x[1] + x[2])([r_xx, C, c])
-    R12 = Lambda(lambda x: x[0]*x[1] - x[2])([r_xy, C, r_zs])
-    R13 = Lambda(lambda x: x[0]*x[1] + x[2])([r_xz, C, r_ys])
-    R21 = Lambda(lambda x: x[0]*x[1] + x[2])([r_xy, C, r_zs])
-    R22 = Lambda(lambda x: x[0]*x[1] + x[2])([r_yy, C, c])
-    R23 = Lambda(lambda x: x[0]*x[1] - x[2])([r_yz, C, r_xs])
-    R31 = Lambda(lambda x: x[0]*x[1] - x[2])([r_xz, C, r_ys])
-    R32 = Lambda(lambda x: x[0]*x[1] + x[2])([r_yz, C, r_xs])
-    R33 = Lambda(lambda x: x[0]*x[1] + x[2])([r_zz, C, c])
-    print("R11 shape: " + str(R11.shape))
-
-    R = Concatenate()([R11, R12, R13, R21, R22, R23, R31, R32, R33])
-    print("R shape: " + str(R.shape))
-    R = Reshape((-1, 3, 3))(R)
-    print("R shape: " + str(R.shape))
-
-    return R
-
-def rodrigues_from_rot3d(rot3d):
-    # Convert 3D rotation matrix to (positive) axis-angle vector
-    # Gather elements of the rotation matrix
-    R11 = Lambda(lambda x: K.expand_dims(x[:, :, 0, 0]))(rot3d)
-    R12 = Lambda(lambda x: K.expand_dims(x[:, :, 0, 1]))(rot3d)
-    R13 = Lambda(lambda x: K.expand_dims(x[:, :, 0, 2]))(rot3d)
-    R21 = Lambda(lambda x: K.expand_dims(x[:, :, 1, 0]))(rot3d)
-    R22 = Lambda(lambda x: K.expand_dims(x[:, :, 1, 1]))(rot3d)
-    R23 = Lambda(lambda x: K.expand_dims(x[:, :, 1, 2]))(rot3d)
-    R31 = Lambda(lambda x: K.expand_dims(x[:, :, 2, 0]))(rot3d)
-    R32 = Lambda(lambda x: K.expand_dims(x[:, :, 2, 1]))(rot3d)
-    R33 = Lambda(lambda x: K.expand_dims(x[:, :, 2, 2]))(rot3d)
-    print("R11 shape: " + str(R11.shape))
-
-    # Calculate un-normalised angle vector
-    r_x = Lambda(lambda x: x[0] - x[1])([R32, R23])
-    r_y = Lambda(lambda x: x[0] - x[1])([R13, R31])
-    r_z = Lambda(lambda x: x[0] - x[1])([R21, R12])
-    print("r_x shape: " + str(r_x.shape))
-
-    r_xyz = Concatenate()([r_x, r_y, r_z])
-    print("r_xyz shape: " + str(r_xyz.shape))
-    epsilon = 1e-8
-    r_magnitude = Lambda(lambda x: K.tf.norm(x, axis=-1, keep_dims=True) + epsilon)(r_xyz)
-    print("r_magnitude shape: " + str(r_magnitude.shape))
-
-    # Calculate angle
-    trace = Lambda(lambda x: x[0] + x[1] + x[2])([R11, R22, R33])
-    theta = Lambda(lambda x: K.tf.atan2(x[0], x[1] - 1))([r_magnitude, trace])
-    print("theta shape: " +str(theta.shape))
-
-    # Form compressed vector and return this
-    r_unit = Lambda(lambda x: x[0]/x[1])([r_xyz, r_magnitude])
-    r = Lambda(lambda x: x[0]*x[1])([theta, r_unit])
-    print("r_unit shape: " + str(r_unit.shape))
-    print("r shape: " + str(r.shape))
-
-    return r
-
-def rot3d_from_euler(euler):
-    # Convert Euler-Rodrigues angles to a 3D rotation matrix (with order of rotation X-Y-Z)
-    euler_x = Lambda(lambda x: x[:, :, 0])(euler)
-    euler_y = Lambda(lambda x: x[:, :, 1])(euler)
-    euler_z = Lambda(lambda x: x[:, :, 2])(euler)
-
-    cx = Lambda(lambda x: K.cos(x))(euler_x)
-    sx = Lambda(lambda x: K.sin(x))(euler_x)
-    cy = Lambda(lambda x: K.cos(x))(euler_y)
-    sy = Lambda(lambda x: K.sin(x))(euler_y)
-    cz = Lambda(lambda x: K.cos(x))(euler_z)
-    sz = Lambda(lambda x: K.sin(x))(euler_z)
-
-    R11 = Lambda(lambda x: x[0]*x[1])([cy, cz])
-    R12 = Lambda(lambda x: x[0]*x[1]*x[2] - x[3]*x[4])([sx, sy, cz, cx, sz])
-    R13 = Lambda(lambda x: x[0]*x[1]*x[2] + x[3]*x[4])([cx, sy, cz, sx, sz])
-    R21 = Lambda(lambda x: x[0]*x[1])([cy, sz])
-    R22 = Lambda(lambda x: x[0]*x[1]*x[2] + x[3]*x[4])([sx, sy, sz, cx, cz])
-    R23 = Lambda(lambda x: x[0]*x[1]*x[2] - x[3]*x[4])([cx, sy, sz, sx, cz])
-    R31 = Lambda(lambda x: -x)(sy)
-    R32 = Lambda(lambda x: x[0]*x[1])([sx, cy])
-    R33 = Lambda(lambda x: x[0]*x[1])([cx, cy])
-    print("R11 shape: " + str(R11.shape))
-
-    R = Lambda(lambda x: K.stack(x, axis=-1))([R11, R12, R13, R21, R22, R23, R31, R32, R33])
-    print("R shape: " + str(R.shape))
-    R = Reshape((-1, 3, 3))(R)
-    print("R shape: " + str(R.shape))
-    #exit(1)
-
-    return R
-
-def euler_from_rot3d(rot3d):
-    # Rotation matrix in SO(3) to Euler-Rodrigues form. Note that many-to-one mappings exist, so all possible forms within [-pi, pi] are returned
-    # Gather salient rotation matrix entries
-    R11 = Lambda(lambda x: x[:, :, 0, 0])(rot3d)
-    R12 = Lambda(lambda x: x[:, :, 0, 1])(rot3d)
-    R13 = Lambda(lambda x: x[:, :, 0, 2])(rot3d)
-    R21 = Lambda(lambda x: x[:, :, 1, 0])(rot3d)
-    R31 = Lambda(lambda x: x[:, :, 2, 0])(rot3d)
-    R32 = Lambda(lambda x: x[:, :, 2, 1])(rot3d)
-    R33 = Lambda(lambda x: x[:, :, 2, 2])(rot3d)
-
-    # Calculate y-axis rotation
-    pi = K.constant(np.pi)
-    def normal_case(R11, R21, R31, R32, R33):
-        y1 = Lambda(lambda x: -K.tf.asin(x))(R31)
-        y2 = Lambda(lambda x: pi - x)(y1)
-
-        # Calculate cosine of possible y-axis rotations
-        cy1 = Lambda(lambda x: K.cos(x))(y1)
-        cy2 = Lambda(lambda x: K.cos(x))(y2)
-
-        # Sign-correct the remaining rotation terms
-        R11_cy1 = Lambda(lambda x: x[0]/x[1])([R11, cy1])
-        R11_cy2 = Lambda(lambda x: x[0]/x[1])([R11, cy2])
-        R21_cy1 = Lambda(lambda x: x[0]/x[1])([R21, cy1])
-        R21_cy2 = Lambda(lambda x: x[0]/x[1])([R21, cy2])
-        R32_cy1 = Lambda(lambda x: x[0]/x[1])([R32, cy1])
-        R32_cy2 = Lambda(lambda x: x[0]/x[1])([R32, cy2])
-        R33_cy1 = Lambda(lambda x: x[0]/x[1])([R33, cy1])
-        R33_cy2 = Lambda(lambda x: x[0]/x[1])([R33, cy2])
-
-        # Find possible x- and z-axis rotations
-        x1 = Lambda(lambda x: K.tf.atan2(x[0], x[1]))([R32_cy1, R33_cy1])
-        x2 = Lambda(lambda x: K.tf.atan2(x[0], x[1]))([R32_cy2, R33_cy2])
-        z1 = Lambda(lambda x: K.tf.atan2(x[0], x[1]))([R21_cy1, R11_cy1])
-        z2 = Lambda(lambda x: K.tf.atan2(x[0], x[1]))([R21_cy2, R11_cy2])
-        print("x1 shape: " + str(x1.shape))
-
-        # Gather corresponding elements
-        #euler1 = Concatenate()([x1, y1, z1])
-        euler1 = Lambda(lambda x: K.stack(x, axis=-1))([x1, y1, z1])
-        print("euler1 shape: " + str(euler1.shape))
-        #euler1 = Reshape((-1, 3))(euler1)
-        #print("euler1 shape: " + str(euler1.shape))
-        #euler2 = Concatenate()([x2, y2, z2])
-        euler2 = Lambda(lambda x: K.stack(x, axis=-1))([x2, y2, z2])
-        print("euler2 shape: " + str(euler2.shape))
-        #euler2 = Reshape((-1, 3))(euler2)
-        #print("euler2 shape: " + str(euler2.shape))
-        euler = Lambda(lambda x: K.stack(x, axis=-1))([euler1, euler2])
-        print("euler shape: " + str(euler.shape))
-        #euler = Reshape((-1, 3, 2))(euler)
-        #print("euler shape: " + str(euler.shape))
-        #exit(1)
-        return euler
-
-    euler = normal_case(R11, R21, R31, R32, R33)
-    return euler
 
 
 # Metrics
@@ -404,7 +189,7 @@ def get_sin_metric(delta_d, delta_d_hat, average=True):
     print("delta_d_hat sin loss shape: " + str(false_sin_loss_delta_d_hat.shape))
     return false_sin_loss_delta_d_hat
 
-def get_angular_distance_metric(delta_d, delta_d_hat, rot_form="Rodrigues", include_shape=True):
+def get_angular_distance_metric(delta_d, delta_d_hat, rot_form="Rodrigues"):
     """ Calculate the difference angle between two rotations """
     # Convert Euler/Rodrigues form to 3D rotation matrix form
     delta_d_pose, delta_d_shape, delta_d_trans = split_and_reshape_euler_angles(delta_d)
@@ -422,17 +207,36 @@ def get_angular_distance_metric(delta_d, delta_d_hat, rot_form="Rodrigues", incl
     else:
         raise ValueError("Argument to rot_form '{}' not recognised (should be either 'Rodrigues' or 'Euler').".format(rot_form))
 
-    # Get the geodesic loss between these matrices
-    angular_error = geodesic_loss(rot3d_delta_d, rot3d_delta_d_hat)
+    #dot_product = Lambda(lambda x: K.tf.reduce_sum(K.tf.multiply(x[:, :, 0], x[:, :, 1]), axis=-1))(rot3d_delta_d_hat)
+    #error = Lambda(lambda x: K.mean(x, axis=1))(dot_product)
 
-    if include_shape:
-        # Calculate the MSE error of the shape predictions
-        shape_error = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1))([delta_d_shape, delta_d_hat_shape])
+    # Find the rotation matrix that represents the difference between these matrices
+    R = Lambda(lambda x: K.tf.matmul(x[0], x[1], transpose_b=True))([rot3d_delta_d, rot3d_delta_d_hat])
+    #R = Lambda(lambda x: K.tf.matmul(x[1], x[0], transpose_b=True))([rot3d_delta_d, rot3d_delta_d_hat])
+    print("R shape: " + str(R.shape))
+    #exit(1)
 
-        # Combine the angular MAE with the shape MSE
-        error = Add(name="delta_d_hat_sin_mse_unshaped")([angular_error, shape_error])
-    else:
-        error = Lambda(lambda x: x, name="delta_d_hat_sin_mse_unshaped")(angular_error)
+    # Test whether the rotation matrix is valid
+    #cos_theta = Lambda(lambda x: 0.5*(K.tf.trace(x) - 1))(R)
+    #error = Lambda(lambda x: K.max(x, axis=-1))(cos_theta)
+
+    # Calculate the angle this represents
+    theta = Lambda(lambda x: K.tf.acos(K.clip(0.5*(K.tf.trace(x) - 1), -1., 1.)))(R)
+    print("theta shape: " + str(theta.shape))
+    #sin_theta = Lambda(lambda x: K.sin(x))(theta)
+    #print("sin_theta shape: " + str(sin_theta.shape))
+    # Can normalise the error to lie in range [0, 1]
+    angular_error = Lambda(lambda x: K.mean(x, axis=-1))(theta)
+    #angular_error = Lambda(lambda x: K.mean(K.abs(x), axis=-1))(theta)
+    #angular_error = Lambda(lambda x: K.mean(K.abs(x)/np.pi, axis=-1))(theta)
+    #angular_error = Lambda(lambda x: K.mean(K.abs(x), axis=-1))(sin_theta)
+
+    # Calculate the MSE error of the shape predictions
+    shape_error = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1))([delta_d_shape, delta_d_hat_shape])
+
+    # Combine the angular MAE with the shape MSE
+    error = Add(name="delta_d_hat_sin_mse_unshaped")([angular_error, shape_error])
+    #error = Lambda(lambda x: x, name="delta_d_hat_sin_mse_unshaped")(angular_error)
     error = Reshape((1,), name="delta_d_hat_sin_mse")(error)
 
     return error
@@ -452,11 +256,8 @@ def init_emb_layers(index, emb_size, param_trainable, init_wrapper):
 
         return emb_layers
 
-def emb_init_weights(emb_params, period=None, distractor=np.pi, pose_offset={}, dist="uniform"):
+def emb_init_weights(emb_params, period=None, distractor=np.pi, pose_offset={}):
     """ Embedding weights initialiser """
-    recognised_modes = ["uniform", "gaussian", "normal"]
-    assert dist in recognised_modes
-
     def emb_init_wrapper(param, offset=False):
         def emb_init(shape):
             """ Initializer for the embedding layer """
@@ -468,12 +269,8 @@ def emb_init_weights(emb_params, period=None, distractor=np.pi, pose_offset={}, 
                     k = K.constant(distractor["param_{:02d}".format(param)])
                 else:
                     k = K.constant(pose_offset["param_{:02d}".format(param)])
-
-                if dist == "uniform":
-                    offset_value = K.random_uniform(shape=[shape[0]], minval=-k, maxval=k, dtype="float32")
-                elif dist == "normal" or dist == "gaussian":
-                    offset_value = K.random_normal(shape=[shape[0]], mean=0.0, stddev=k, dtype="float32")
-
+                offset_value = K.random_uniform(shape=[shape[0]], minval=-k, maxval=k, dtype="float32")
+                #offset_value = K.random_uniform(shape=[shape[0]], minval=k, maxval=k, dtype="float32")
                 #print(offset_value)
                 #exit(1)
                 if period is not None and shape[0] % period == 0:

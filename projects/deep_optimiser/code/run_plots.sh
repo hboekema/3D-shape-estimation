@@ -59,10 +59,14 @@
 #exp_dir2=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/Conv1DFullOptLearnerStaticArchitecture_2020-03-25_09:53:11/   # more input points
 
 # New deep opt. architecture on 1D 12 joints
-exp_dir1=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-07_15:24:44/      # control dir
-exp_dir2=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-07_15:18:51/      # with 0.1 Dropout rate
-exp_dir3=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-07_15:30:32/      # batch size 1024
+#exp_dir1=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-07_15:24:44/      # control dir
+#exp_dir2=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-07_15:18:51/      # with 0.1 Dropout rate
+#exp_dir3=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-07_15:30:32/      # batch size 1024
 
-python plot_losses.py --dirs $exp_dir1 $exp_dir2 $exp_dir3
-#python plot_losses.py --dirs $exp_dir1 $exp_dir2
+# All joints in 3 DoF - Rodrigues vs 6D representation
+exp_dir1=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-19_14:58:13/       # Rodrigues
+exp_dir2=/data/cvfs/hjhb2/projects/deep_optimiser/experiments/RotConv1DOptLearnerArchitecture_2020-04-19_15:07:02/           # 6D
+
+#python plot_losses.py --dirs $exp_dir1 $exp_dir2 $exp_dir3
+python plot_losses.py --dirs $exp_dir1 $exp_dir2
 #python plot_losses.py --dirs $exp_dir1

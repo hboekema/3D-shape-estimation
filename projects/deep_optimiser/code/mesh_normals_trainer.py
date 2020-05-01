@@ -360,7 +360,7 @@ elif INPUT_TYPE == "3D_POINTS":
             0.0, # difference angle loss (L_xent)
             ]
 
-if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture" or ARCHITECTURE == "GroupedConv1DOptLearnerArchitecture":
     optlearner_loss += [false_loss]
     optlearner_loss_weights += [0.0]
 

@@ -7,7 +7,7 @@ import pickle
 from smpl_np import SMPLModel
 from render_mesh import Mesh
 from generate_data import gen_data
-from training_helpers import architecture_output_array
+from tools.data_helpers import architecture_output_array
 
 
 class OptLearnerUpdateGenerator(keras.utils.Sequence):

@@ -1,7 +1,6 @@
 import sys
 import numpy as np
 #import tensorflow.compat.v1 as tf
-import tensorflow as tf
 import keras.backend as K
 from keras.layers import Input, Dense, Flatten, Conv1D, AveragePooling1D, MaxPooling1D, GlobalAveragePooling1D, Lambda, Concatenate, Dropout, BatchNormalization, Embedding, Reshape, Multiply, Add
 from keras.activations import softsign
@@ -19,7 +18,7 @@ from render_mesh import Mesh
 from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, get_angular_distance_metric, emb_init_weights, angle_between_vectors, split_and_reshape_euler_angles
 
 
-def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
+def GroupedConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS", groups=[]):
     """ Optimised learner network architecture """
     # An embedding layer is required to optimise the parameters
     optlearner_input = Input(shape=(1,), name="embedding_index")
@@ -37,10 +36,20 @@ def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_para
     print("gt parameters shape: " + str(gt_params.shape))
     print("gt point cloud shape: " + str(gt_pc.shape))
 
-    # Get trainable parameters
-    trainable_params = Input(shape=(85,), name="trainable_params")
-    print("trainable_params shape: " + str(trainable_params.shape))
-    #exit(1)
+    #group1 = [0,1,2,3]
+    #group2 = [4,5,6,7]
+    #group3 = [8,9,10,11]
+    #group4 = [12,13,14,15]
+    #group5 = [16,17,18,19]
+    #group6 = [20,21,22,23]
+
+    #groups = [group1, group2, group3, group4, group5, group6]
+    #groups = [group1 + group2, group3 + group4, group5 + group6]
+    #groups = [[i] for i in range(24)]
+    print("groups: " + str(groups))
+    flattened_groups = [i for sublist in groups for i in sublist]
+    print(flattened_groups)
+    assert np.all([i in flattened_groups for i in range(24)])
 
     # Compute the true offset (i.e. difference) between the ground truth and learned parameters
     pi = K.constant(np.pi)
@@ -117,20 +126,61 @@ def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_para
     mesh_diff_NOGRAD = Concatenate()([diff_normals_NOGRAD, dist_angles_NOGRAD])
 
     if input_type == "3D_POINTS":
-        optlearner_architecture = Dense(2**9, activation="relu")(vertex_diff_NOGRAD)
-        #optlearner_architecture = Dense(2**7, activation="relu")(vertex_diff_NOGRAD)
+        deep_opt_input = Dense(2**9, activation="relu")(vertex_diff_NOGRAD)
     if input_type == "MESH_NORMALS":
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_norm_NOGRAD)
-        #optlearner_architecture = Dense(2**11, activation="relu")(diff_angles_NOGRAD)
-        optlearner_architecture = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
-        #optlearner_architecture = Dense(2**7, activation="relu")(mesh_diff_NOGRAD)
-    #optlearner_architecture = BatchNormalization()(optlearner_architecture)
-    #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
-    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
-    optlearner_architecture = Reshape((optlearner_architecture.shape[1].value, 1))(optlearner_architecture)
-    print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+        deep_opt_input = Dense(2**9, activation="relu")(mesh_diff_NOGRAD)
+    print('deep_opt_input shape: '+str(deep_opt_input.shape))
+    deep_opt_input = Reshape((-1, 1))(deep_opt_input)
+    print('deep_opt_input shape: '+str(deep_opt_input.shape))
     #DROPOUT = 0.1
     DROPOUT = 0.0
+    indices_ordering = []
+    group_outputs = []
+    group_losses = []
+    group_sin_losses = []
+    group_param_mse = []
+    for group in groups:
+        optlearner_architecture = Conv1D(64, 5, strides=2, activation="relu")(deep_opt_input)
+        optlearner_architecture = Dropout(DROPOUT)(optlearner_architecture)
+        optlearner_architecture = Conv1D(128, 5, strides=2, activation="relu")(optlearner_architecture)
+        optlearner_architecture = Dropout(DROPOUT)(optlearner_architecture)
+        optlearner_architecture = Conv1D(256, 3, strides=2, activation="relu")(optlearner_architecture)
+        optlearner_architecture = Dropout(DROPOUT)(optlearner_architecture)
+#        optlearner_architecture = Conv1D(512, 3, strides=2, activation="relu")(optlearner_architecture)
+#        optlearner_architecture = Dropout(DROPOUT)(optlearner_architecture)
+        #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+        #optlearner_architecture = Flatten()(optlearner_architecture)
+        print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+        optlearner_architecture = Reshape((-1,))(optlearner_architecture)
+        print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+        #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
+        #optlearner_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
+        #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
+        #delta_d_hat = Dense(85, activation="linear", name="delta_d_hat")(optlearner_architecture)
+        delta_d_hat = Dense(3*len(group), activation="linear")(optlearner_architecture)
+        print('delta_d_hat shape: '+str(delta_d_hat.shape))
+        group_outputs.append(delta_d_hat)
+        #exit(1)
+
+        indices = []
+        for joint in group:
+            j_base = 3*joint
+            j1 = j_base
+            j2 = j_base + 1
+            j3 = j_base + 2
+            indices += [j1, j2, j3]
+        indices_ordering += indices
+
+        #indices = K.constant(indices)
+        ## Filter parameters such that the model is only evaluated on trainable parameters
+        #delta_d_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(delta_d)
+        #delta_d_NOGRAD_FILTERED = Lambda(lambda x: K.tf.gather(x, indices, axis=-1))(delta_d_NOGRAD)
+        #delta_d_hat_FILTERED = Lambda(lambda x: K.tf.gather(x, indices, axis=-1))(delta_d_hat)
+
+    # predict shape and translation parameters
+    optlearner_architecture = Dense(2**9, activation="relu")(deep_opt_input)
+    deep_opt_input = Reshape((-1, 1))(deep_opt_input)
+    print('deep_opt_input shape: '+str(deep_opt_input.shape))
     optlearner_architecture = Conv1D(64, 5, strides=2, activation="relu")(optlearner_architecture)
     optlearner_architecture = Dropout(DROPOUT)(optlearner_architecture)
     optlearner_architecture = Conv1D(128, 5, strides=2, activation="relu")(optlearner_architecture)
@@ -147,50 +197,31 @@ def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_para
     #optlearner_architecture = Dropout(0.5)(optlearner_architecture)
     #optlearner_architecture = Dense(2**7, activation="relu")(optlearner_architecture)
     #print('optlearner_architecture shape: '+str(optlearner_architecture.shape))
-    delta_d_hat = Dense(85, activation="linear", name="delta_d_hat")(optlearner_architecture)
+    #delta_d_hat = Dense(85, activation="linear", name="delta_d_hat")(optlearner_architecture)
+    shape_params = Dense(13, activation="linear", name="shape_params")(optlearner_architecture)
     print('delta_d_hat shape: '+str(delta_d_hat.shape))
+    group_outputs.append(shape_params)
     #exit(1)
 
-    # Filter parameters such that the model is only evaluated on trainable parameters
+    indices_ordering += [i for i in range(72, 85)]
+    print(indices_ordering)
+
+    # process indices ordering to re-order array
+    reordered_indices = []
+    for i in sorted(indices_ordering):
+        reordered_indices.append(indices_ordering.index(i))
+    reordered_indices = K.constant(reordered_indices, dtype=K.tf.int32)
+    #print(reordered_indices)
+    #exit(1)
+
+    delta_d_hat = Concatenate(axis=-1)(group_outputs)
+    print("delta_d_hat shape: " + str(delta_d_hat.shape))
+    delta_d_hat = Lambda(lambda x: K.tf.gather(x, reordered_indices, axis=-1), name="delta_d_hat")(delta_d_hat)
+    print("delta_d_hat shape: " + str(delta_d_hat.shape))
+
     delta_d_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(delta_d)
-    #delta_d_NOGRAD_filtered = Lambda(lambda x: K.switch())()
-    #delta_d_NOGRAD_FILTERED = Multiply()([delta_d_NOGRAD, trainable_params])
-    delta_d_NOGRAD_FILTERED = Lambda(lambda x: x[0] * x[1])([delta_d_NOGRAD, trainable_params])
-    print("delta_d_NOGRAD_FILTERED shape: " + str(delta_d_NOGRAD_FILTERED.shape))
-    delta_d_NOGRAD = Lambda(lambda x: x)(delta_d_NOGRAD_FILTERED)
-    delta_d_NOGRAD = Lambda(lambda x: K.stop_gradient(x))(delta_d_NOGRAD)
-    #exit(1)
-
-    # Split parameters by type
-    delta_d_pose, delta_d_shape, delta_d_trans = split_and_reshape_euler_angles(delta_d_NOGRAD)
-    delta_d_hat_pose, delta_d_hat_shape, delta_d_hat_trans = split_and_reshape_euler_angles(delta_d_hat)
-
-    # Calculate the angular loss between parameters (and MSE for shape)
-    pose_thetas = angle_between_vectors(delta_d_pose, delta_d_hat_pose, with_norms=True)
-    pose_loss = Lambda(lambda x: K.mean(x, axis=1))(pose_thetas)
-    shape_loss = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1, keepdims=True))([delta_d_shape, delta_d_hat_shape])
-    trans_thetas = angle_between_vectors(delta_d_trans, delta_d_hat_trans, with_norms=True)
-    trans_loss = Lambda(lambda x: K.mean(x, axis=1))(trans_thetas)
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.tf.concat(x, axis=-1), axis=-1))([pose_loss, shape_loss, trans_loss])
-
-    # Calculate the (batched) MSE between the learned and ground truth offset in the parameters
+    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD_FILTERED, delta_d_hat_FILTERED])
     false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD, delta_d_hat])
-    #false_loss_delta_d_hat = Lambda(lambda x: K.sum(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD, delta_d_hat])
-    #false_loss_delta_d_hat = Lambda(lambda x: mape(x[0], x[1]))([delta_d_NOGRAD, delta_d_hat])
-
-    # Calculate the loss for direction and magnitude separately
-    sign_loss = Lambda(lambda x: 0.5*(1. - softsign(10*x[0]*x[1])))([delta_d_NOGRAD, delta_d_hat])
-    #magnitude_loss = Lambda(lambda x: K.abs(K.abs(x[0]) - K.abs(x[1])))([delta_d_NOGRAD, delta_d_hat])
-    magnitude_loss = Lambda(lambda x: K.exp(K.abs(x[1]) - K.abs(x[0])) )([delta_d_NOGRAD, delta_d_hat])
-    weighting = 0.1
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(x[0] + weighting*x[1], axis=-1))([sign_loss, magnitude_loss])
-
-    # Calculate the loss on rendered updated parameters
-    new_params = Lambda(lambda x: x[0] + x[1], name="new_params")([optlearner_params, delta_d_hat])
-    new_pc = Lambda(lambda x: get_pc(x, smpl_params, input_info, faces))(new_params)
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.sum(K.square(x[0] - x[1]), axis=-1), axis=1), name="new_params_euc_dist")([gt_pc, new_pc])
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1) + x[2])([delta_d_NOGRAD, delta_d_hat, false_loss_delta_d_hat])
-
     false_loss_delta_d_hat = Reshape(target_shape=(1,), name="delta_d_hat_mse")(false_loss_delta_d_hat)
     print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
 
@@ -200,8 +231,8 @@ def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_para
     #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
     false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_sin_loss_delta_d_hat)
     print("delta_d_hat sin loss shape: " + str(false_sin_loss_delta_d_hat.shape))
-    #per_param_mse = Lambda(lambda x: K.square(x[0] - x[1]))([delta_d_NOGRAD, delta_d_hat])
     per_param_mse = Lambda(lambda x: K.square(K.sin(x[0] - x[1])))([delta_d_NOGRAD, delta_d_hat])
+    #per_param_mse = Lambda(lambda x: K.square(x[0] - x[1]))([delta_d_NOGRAD, delta_d_hat])
     per_param_mse = Reshape((85,), name="params_mse")(per_param_mse)
 
     # Prevent model from using the delta_d_hat gradient in final loss
@@ -211,7 +242,6 @@ def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_para
     false_loss_smpl = Multiply(name="smpl_diff")([optlearner_params, delta_d_hat_NOGRAD])
     print("smpl loss shape: " + str(false_loss_smpl.shape))
 
-    #return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles]
-    return [optlearner_input, gt_params, gt_pc, trainable_params], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles, per_param_mse]
+    return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles, per_param_mse]
 
 

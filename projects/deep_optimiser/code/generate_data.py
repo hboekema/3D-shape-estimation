@@ -13,7 +13,7 @@ sys.path.append('/data/cvfs/ib255/shared_file_system/code/keras_rotationnet_v2/'
 from smpl_np_rot_v6 import print_mesh, print_point_clouds
 from render_mesh import Mesh
 from tqdm import tqdm
-from training_helpers import format_distractor_dict, offset_params
+from tools.data_helpers import format_distractor_dict, offset_params
 #import cv2
 
 

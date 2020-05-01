@@ -21,6 +21,12 @@ exp_dirs = [
         "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-21_15:40:38/"
         ]
 
+exp_dirs = [
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-23_08:04:34/",
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-22_20:14:34/",
+        "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/NewDeepConv1DOptLearnerArchitecture_2020-04-22_20:15:12/"
+        ]
+
 # Read in the configurations
 all_setup_params = []
 for exp_dir in exp_dirs:
@@ -246,15 +252,23 @@ if MODE == "EULER":
 X_data = [np.array(X_indices), np.array(X_params), np.array(X_pcs)]
 Y_data = architecture_output_array(ARCHITECTURE, data_samples)
 
+if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+    trainable_params_mask = [int(param_trainable[key]) for key in sorted(param_trainable.keys(), key=lambda x: int(x[6:8]))]
+    #print(trainable_params_mask)
+    trainable_params_mask = np.tile(trainable_params_mask, (data_samples, 1))
+    print("trainable_maks_shape: " + str(trainable_params_mask.shape))
+    X_data += [trainable_params_mask]
+
 x_test = X_data
 y_test = Y_data
 
 # Render silhouettes for the callback data
 num_samples = 5
-cb_indices = X_indices[:num_samples]
-cb_params = X_params[:num_samples]
-cb_pcs = X_pcs[:num_samples]
-X_cb = [np.array(cb_indices), np.array(cb_params), np.array(cb_pcs)]
+cb_samples = np.linspace(0, data_samples, num_samples, dtype=int)
+cb_samples[-1] -= 1
+X_cb = [entry[cb_samples] for entry in X_data]
+Y_cb = [entry[cb_samples] for entry in Y_data]
+cb_pcs = X_cb[2]
 silh_cb = []
 for pc in cb_pcs:
     silh = Mesh(pointcloud=pc).render_silhouette(show=False)
@@ -390,7 +404,7 @@ for i, model in enumerate(models):
                 0.0, # difference angle loss (L_xent)
                 ]
 
-    if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
+    if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture" or ARCHITECTURE == "GroupedConv1DOptLearnerArchitecture":
         optlearner_loss += [false_loss]
         optlearner_loss_weights += [0.0]
 

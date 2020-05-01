@@ -16,7 +16,7 @@ from points3d import Points3DFromSMPLParams, get_parameters
 from smpl_np_rot_v6 import load_params
 #from smpl_tf import smpl_model, smpl_model_batched
 from render_mesh import Mesh
-from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, get_angular_distance_metric, emb_init_weights, angle_between_vectors, split_and_reshape_euler_angles
+from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights, angle_between_vectors, split_and_reshape_euler_angles
 
 
 def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS"):
@@ -195,9 +195,8 @@ def NewDeepConv1DOptLearnerArchitecture(param_trainable, init_wrapper, smpl_para
     print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
 
     # Metrics
-    false_sin_loss_delta_d_hat = get_angular_distance_metric(delta_d_NOGRAD, delta_d_hat)
     #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat)
-    #false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
+    false_sin_loss_delta_d_hat = get_sin_metric(delta_d_NOGRAD, delta_d_hat, average=False)
     false_sin_loss_delta_d_hat = Lambda(lambda x: x, name="delta_d_hat_sin_output")(false_sin_loss_delta_d_hat)
     print("delta_d_hat sin loss shape: " + str(false_sin_loss_delta_d_hat.shape))
     #per_param_mse = Lambda(lambda x: K.square(x[0] - x[1]))([delta_d_NOGRAD, delta_d_hat])

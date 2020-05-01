@@ -15,6 +15,7 @@ from architectures.GatedCNNOptLearnerArchitecture import GatedCNNOptLearnerArchi
 from architectures.LatentConv1DOptLearnerStaticArchitecture import LatentConv1DOptLearnerStaticArchitecture
 from architectures.RotConv1DOptLearnerArchitecture import RotConv1DOptLearnerArchitecture
 from architectures.ConditionalOptLearnerArchitecture import ConditionalOptLearnerArchitecture
+from architectures.GroupedConv1DOptLearnerArchitecture import GroupedConv1DOptLearnerArchitecture
 
 
 def format_distractor_dict(k, trainable_params):
@@ -201,6 +202,8 @@ def architecture_inputs_and_outputs(ARCHITECTURE, param_trainable, emb_initialis
         optlearner_inputs, optlearner_outputs = RotConv1DOptLearnerArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
     elif ARCHITECTURE == "ConditionalOptLearnerArchitecture":
         optlearner_inputs, optlearner_outputs = ConditionalOptLearnerArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
+    elif ARCHITECTURE == "GroupedConv1DOptLearnerArchitecture":
+        optlearner_inputs, optlearner_outputs = GroupedConv1DOptLearnerArchitecture(param_trainable=param_trainable, init_wrapper=emb_initialiser, smpl_params=smpl_params, input_info=input_info, faces=faces, emb_size=data_samples, input_type=INPUT_TYPE)
     else:
         raise ValueError("Architecture '{}' not recognised".format(ARCHITECTURE))
 
@@ -226,9 +229,8 @@ def architecture_output_array(ARCHITECTURE, data_samples, num_trainable=24):
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
     elif ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
         #Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
-        #Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85))]
-        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 37)), np.zeros((data_samples, 85))]
-    elif ARCHITECTURE == "ResConv1DOptLearnerStaticArchitecture":
+        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85))]
+        #Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 37)), np.zeros((data_samples, 85))]
     elif ARCHITECTURE == "ResConv1DOptLearnerStaticArchitecture":
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
     elif ARCHITECTURE == "ProbCNNOptLearnerStaticArchitecture":
@@ -242,6 +244,8 @@ def architecture_output_array(ARCHITECTURE, data_samples, num_trainable=24):
         #Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 1, 3, 3)), np.zeros((data_samples, 24, 3, 3)), np.zeros((data_samples, 24*3*2)), np.zeros((data_samples, 24*3*2)), np.zeros((data_samples, 24, 3)), np.zeros((data_samples, 24, 3))]
     elif ARCHITECTURE == "ConditionalOptLearnerArchitecture":
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 1, 3, 3)), np.zeros((data_samples, num_trainable, 3, 3)), np.zeros((data_samples, num_trainable*3*2)), np.zeros((data_samples, num_trainable*3*2))]
+    elif ARCHITECTURE == "GroupedConv1DOptLearnerArchitecture":
+        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85))]
     else:
         raise ValueError("Architecture '{}' not recognised".format(ARCHITECTURE))
 
