@@ -16,15 +16,16 @@ args = parser.parse_args()
 
 # Read in the configurations
 if args.config is not None:
-    with open(args.config, 'r') as f:
-        setup_params = json.load(f)
+    config_path = args.config
 else:
-    with open("./config.yaml", 'r') as f:
-        try:
-            setup_params = yaml.safe_load(f)
-            #print(setup_params)
-        except yaml.YAMLError as exc:
-            print(exc)
+    config_path = "./config.yaml"
+
+with open(config_path, 'r') as f:
+    try:
+        setup_params = yaml.safe_load(f)
+        #print(setup_params)
+    except yaml.YAMLError as exc:
+        print(exc)
 
 # Set the ID of this training pass
 if args.run_id is not None:
@@ -66,7 +67,7 @@ import numpy as np
 import tensorflow as tf
 import pickle
 
-from tools.training_helpers import train_model
+from tools.training_helpers_v3 import train_model
 
 
 if __name__ == "__main__":

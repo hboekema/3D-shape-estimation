@@ -162,29 +162,34 @@ def setup_test_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET,
 
     # Generate and format the data
     print("Gather input data...")
-    X_test, Y_test = gather_input_data(data_samples, smpl, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, param_trainable, num_test_samples=num_test_samples, MODE=MODE, LOAD_DATA_DIR=LOAD_DATA_DIR)
+    X_test, Y_test = gather_input_data(data_samples, smpl, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, param_trainable, num_test_samples=num_test_samples, MODE=MODE, LOAD_DATA_DIR=LOAD_DATA_DIR, kin_tree=kin_tree)
 
     # Render silhouettes for the callback data
     X_cb, Y_cb, silh_cb = gather_cb_data(X_test, Y_test, data_samples, num_cb_samples, where="front")
 
-    return X_test, Y_test, X_cb, Y_cb, silh_cb, smpl, kin_tree, trainable_params, param_trainable, DISTRACTOR
+    return X_test, Y_test, X_cb, Y_cb, silh_cb, smpl, kin_tree, trainable_params, param_trainable, DISTRACTOR, POSE_OFFSET
 
 
-def setup_embedding_weights(data_samples, X_params, DISTRACTOR, param_trainable, DIST="uniform"):
+def setup_embedding_weights(data_samples, X_params, DISTRACTOR, param_trainable, DIST="uniform", OFFSET_NT=False, POSE_OFFSET=None, RESET_PRED_TO_ZERO=False):
     # Generate initial embedding layer weights
     initial_weights = np.zeros((data_samples, 85))
-    emb_initialiser = emb_init_weights_np(X_params, distractor=DISTRACTOR, dist=DIST)
-    for param_name, trainable in param_trainable.items():
-        param_number = int(param_name[6:8])
-        emb_init_ = emb_initialiser(param=param_number, offset=trainable)
+    if RESET_PRED_TO_ZERO:
+        emb_initialiser = emb_init_weights_np(X_params, distractor=DISTRACTOR, dist=DIST, reset_to_zero=RESET_PRED_TO_ZERO)
+    elif OFFSET_NT:
+        emb_initialiser = emb_init_weights_np(X_params, distractor=DISTRACTOR, pose_offset=POSE_OFFSET, dist=DIST)
+    else:
+        emb_initialiser = emb_init_weights_np(X_params, distractor=DISTRACTOR, dist=DIST)
+
+    for param_number in range(85):
+        emb_init_ = emb_initialiser(param=param_number, offset=param_trainable["param_{:02d}".format(param_number)])
         initial_weights[:, param_number] = emb_init_(shape=(data_samples,))
 
     return emb_initialiser, initial_weights
 
 
-def setup_test_model(model, ARCHITECTURE, data_samples, param_trainable, emb_initialiser, initial_weights, INPUT_TYPE, TRAIN_LR):
+def setup_test_model(model, ARCHITECTURE, data_samples, param_trainable, emb_initialiser, initial_weights, INPUT_TYPE, TRAIN_LR, groups):
     # Retrieve model architecture and load weights
-    optlearner_model = construct_optlearner_model(ARCHITECTURE, param_trainable, emb_initialiser, data_samples, INPUT_TYPE)
+    optlearner_model = construct_optlearner_model(ARCHITECTURE, param_trainable, emb_initialiser, data_samples, INPUT_TYPE, groups)
     optlearner_model.load_weights(model)
 
     # Freeze all layers except for the required embedding layers

@@ -1,8 +1,8 @@
 GENERAL:
-    GPU_ID: "0"
+    #GPU_ID: "0"
     #GPU_ID: "1"
     #GPU_ID: "2"
-    #GPU_ID: "3"
+    GPU_ID: "3"
     #GPU_ID: "4"
     #GPU_ID: "5"
     #GPU_ID: "6"
@@ -40,8 +40,8 @@ BASIC:
     #DISTRACTOR: {"other": 0.17}
     #DISTRACTOR: {"other": "pi"}
     #DISTRACTOR: {"param_01": 1.1, "other": 0.1}
-    DISTRACTOR: {"param_01": 0.2, "other": 0.2}
-    #DISTRACTOR: {"param_01": 1.2, "other": 0.2}
+    #DISTRACTOR: {"param_01": 0.2, "other": 0.2}
+    DISTRACTOR: {"param_01": 1.2, "other": 0.2}
     #DISTRACTOR: {"param_01": 1.3, "other": 0.3}
     #DISTRACTOR: {"param_01": 1.0, "other": 0.3}
     #DISTRACTOR: {"param_01": 1.3, "other": 0.4}
@@ -58,11 +58,12 @@ BASIC:
     #DISTRACTOR: {"param_00": 0.0, "param_01": 0.0, "param_02": 0.0, "other": 0.3}
     #NUM_SAMPLES: 5 
     #NUM_SAMPLES: 20
-    #NUM_SAMPLES: 100
+    NUM_SAMPLES: 100
     #NUM_SAMPLES: 200
     #NUM_SAMPLES: 512
     #NUM_SAMPLES: 1000
-    NUM_SAMPLES: 10000
+    #NUM_SAMPLES: 2000
+    #NUM_SAMPLES: 10000
     #NUM_SAMPLES: 20000
     #NUM_SAMPLES: 100000
     NUM_CB_SAMPLES: 5
@@ -76,8 +77,8 @@ DATA:
     #POSE_OFFSET: {"other": "pi"} 
     #POSE_OFFSET: {"param_01": 1.1, "other": 0.1}
     #POSE_OFFSET: {"param_01": "pi", "other": 0.17}
-    POSE_OFFSET: {"param_01": 0.2, "other": 0.2}
-    #POSE_OFFSET: {"param_01": 1.2, "other": 0.2}
+    #POSE_OFFSET: {"param_01": 0.2, "other": 0.2}
+    POSE_OFFSET: {"param_01": 1.2, "other": 0.2}
     #POSE_OFFSET: {"param_01": 1.3, "other": 0.3}
     #POSE_OFFSET: {"param_01": 1.0, "other": 0.3}
     #POSE_OFFSET: {"param_01": "pi", "other": 0.3}
@@ -236,16 +237,16 @@ MODEL:
     #ARCHITECTURE: "LatentConv1DOptLearnerStaticArchitecture"
     #ARCHITECTURE: "RotConv1DOptLearnerArchitecture"
     #ARCHITECTURE: "ConditionalOptLearnerArchitecture"
-    #ARCHITECTURE: "GroupedConv1DOptLearnerArchitecture" 
-    ARCHITECTURE: "GroupedConv2DOptLearnerArchitecture" 
+    ARCHITECTURE: "GroupedConv1DOptLearnerArchitecture" 
+    #ARCHITECTURE: "GroupedConv2DOptLearnerArchitecture" 
     #ARCHITECTURE: "PeriodicOptLearnerArchitecture"
     
     #INPUT_TYPE: "3D_POINTS"
     INPUT_TYPE: "MESH_NORMALS"
     #INPUT_TYPE: "ONLY_NORMALS"
     
-    LEARNING_RATE: 0.05
-    #LEARNING_RATE: 0.005
+    #LEARNING_RATE: 0.05
+    LEARNING_RATE: 0.005
     #LEARNING_RATE: 0.002
     #LEARNING_RATE: 0.001
     #LEARNING_RATE: 0.0001
@@ -269,38 +270,40 @@ MODEL:
     #PC_LOSS_WEIGHT: 1
     PC_LOSS_WEIGHT: 0 
     
-    #DELTA_D_HAT_LOSS_WEIGHT: 10
+    DELTA_D_HAT_LOSS_WEIGHT: 10
     #DELTA_D_HAT_LOSS_WEIGHT: 1
-    DELTA_D_HAT_LOSS_WEIGHT: 0
+    #DELTA_D_HAT_LOSS_WEIGHT: 0
     
     #UPDATE_LOSS_WEIGHT: 200
     #UPDATE_LOSS_WEIGHT: 100
+    #UPDATE_LOSS_WEIGHT: 25
     #UPDATE_LOSS_WEIGHT: 1
     #UPDATE_LOSS_WEIGHT: 0.01
     UPDATE_LOSS_WEIGHT: 0
    
-    #CONV2D_LOSS_WEIGHT: 0
-    CONV2D_LOSS_WEIGHT: 1
+    CONV2D_LOSS_WEIGHT: 0
+    #CONV2D_LOSS_WEIGHT: 1
 
     # if set, loads in pre-trained Conv2D weights and fixes them (overrides CONV2D_LOSS_WEIGHT)
     CONV2D_PRETRAINED: 
     #CONV2D_PRETRAINED: "/data/cvfs/hjhb2/projects/deep_optimiser/experiments/GroupedConv2DOptLearnerArchitecture_2020-05-15_21:43:46/models/model.9749-0.6663.hdf5" 
 
+    #EPOCHS: 1 
     #EPOCHS: 10000 
     EPOCHS: 1000000 
     
     #BATCH_SIZE: 1 
     #BATCH_SIZE: 5
     #BATCH_SIZE: 10 
-    #BATCH_SIZE: 100
+    BATCH_SIZE: 100
     #BATCH_SIZE: 128
-    BATCH_SIZE: 1024
+    #BATCH_SIZE: 1024
     #BATCH_SIZE: 4096
     
     TRAIN_PERIOD: 5
     
-    OPTIMIZER: "Adam"
-    #OPTIMIZER: "SGD"
+    #OPTIMIZER: "Adam"
+    OPTIMIZER: "SGD"
     
     DROPOUT: 0.0
     #DROPOUT: 0.1

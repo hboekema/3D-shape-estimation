@@ -8,15 +8,16 @@ from keras.optimizers import Adam, SGD
 from smpl_np import SMPLModel
 from silhouette_generator import OptLearnerUpdateGenerator
 from callbacks import PredOnEpochEnd, OptLearnerPredOnEpochEnd, OptimisationCallback, OptLearnerLossGraphCallback, GeneratorParamErrorCallback
-from tools.data_helpers import format_offsetable_params, offset_params, format_distractor_dict, gather_input_data, gather_cb_data
+from tools.data_helpers import format_offsetable_params, offset_params, format_distractor_dict, gather_input_data, gather_cb_data, format_joint_levels
 from tools.model_helpers import construct_optlearner_model, gather_optlearner_losses
 from architectures.architecture_helpers import false_loss, emb_init_weights
 
 
-def update_weights_wrapper(DISTRACTOR, num_samples, PERIOD, trainable_params, optlearner_model, gt_data=None, generator=None, offset_nt=False, pose_offset={}, dist="uniform"):
+def update_weights_wrapper(DISTRACTOR, num_samples, PERIOD, trainable_params, optlearner_model, gt_data=None, generator=None, offset_nt=False, pose_offset={}, dist="uniform", reset_to_zero=False):
     """ Wrapper for weight update functionality """
     recognised_modes = ["uniform", "gaussian", "normal"]
     assert dist in recognised_modes
+    epsilon = 1e-5
 
     # Set the distractor value
     if isinstance(DISTRACTOR, (int, float)):
@@ -37,7 +38,7 @@ def update_weights_wrapper(DISTRACTOR, num_samples, PERIOD, trainable_params, op
         #print("BL_INDEX: " + str(BL_INDEX))
 
         if generator is not None:
-            gt_data, _ = generator.yield_data(epoch)
+            gt_data, _ = generator.yield_data(epoch, render=False)
             gt_params = gt_data[1]
             #print("Gt params shape: " + str(gt_params.shape))
             #print("\n------------------\n" + str(gt_params[0]) + "\n------------------\n")
@@ -46,13 +47,21 @@ def update_weights_wrapper(DISTRACTOR, num_samples, PERIOD, trainable_params, op
             for param in param_ids:
                 layer = optlearner_model.get_layer(param)
                 weights = np.array(layer.get_weights())
-                weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] = gt_params[BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE, int(param[6:8])].reshape((1, BL_SIZE, 1))
-                if offset_nt and param in pose_offset.keys() and param in not_trainable:
-                    if dist == "gaussian" or dist == "normal":
-                        extra_offset = [ np.random.normal(loc=0.0, scale=pose_offset[param], size=(BL_SIZE, weights[i].shape[1])) for i in range(weights.shape[0])]
-                    elif dist == "uniform":
-                        extra_offset = [ (1-2*np.random.rand(BL_SIZE, weights[i].shape[1])) * pose_offset[param] for i in range(weights.shape[0])]
-                    weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] += extra_offset
+                #print('weights shape: '+str(weights.shape))
+                #exit(1)
+                #if False:
+                if not reset_to_zero:
+                    weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] = gt_params[BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE, int(param[6:8])].reshape((1, BL_SIZE, 1))
+                    if offset_nt and param in pose_offset.keys() and param in not_trainable:
+                        if dist == "gaussian" or dist == "normal":
+                            extra_offset = [ np.random.normal(loc=0.0, scale=pose_offset[param], size=(BL_SIZE, weights[i].shape[1])) for i in range(weights.shape[0])]
+                        elif dist == "uniform":
+                            extra_offset = [ (1-2*np.random.rand(BL_SIZE, weights[i].shape[1])) * pose_offset[param] for i in range(weights.shape[0])]
+                        weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] += extra_offset
+                else:
+                    weights_new = np.array([np.zeros((BL_SIZE, weights[i].shape[1])) + epsilon for i in range(weights.shape[0])]).reshape(1, BL_SIZE, 1)
+                    weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] = np.copy(weights_new)    # only update the required block of weights
+                #print(weights)
                 layer.set_weights(weights)
 
 #        param_ids = ["param_{:02d}".format(i) for i in range(85)]
@@ -71,14 +80,31 @@ def update_weights_wrapper(DISTRACTOR, num_samples, PERIOD, trainable_params, op
             #print("weights " + str(weights))
             #print('weights shape: '+str(weights.shape))
             #exit(1)
-            if dist == "gaussian" or dist == "normal":
-                weights_new = [ np.random.normal(loc=0.0, scale=k[param], size=(BL_SIZE, weights[i].shape[1])) for i in range(weights.shape[0])]
-            elif dist == "uniform":
-                weights_new = [ (1-2*np.random.rand(BL_SIZE, weights[i].shape[1])) * k[param] for i in range(weights.shape[0])]
-            #print("weights new " + str(weights_new))
-            weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] += weights_new    # only update the required block of weights
+            if False:
+            #if not reset_to_zero:
+                if dist == "gaussian" or dist == "normal":
+                    weights_new = [ np.random.normal(loc=0.0, scale=k[param], size=(BL_SIZE, weights[i].shape[1])) for i in range(weights.shape[0])]
+                elif dist == "uniform":
+                    weights_new = [ (1-2*np.random.rand(BL_SIZE, weights[i].shape[1])) * k[param] for i in range(weights.shape[0])]
+                #print("weights new " + str(weights_new))
+                weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] += weights_new    # only update the required block of weights
+            else:
+                weights_new = np.array([np.zeros((BL_SIZE, weights[i].shape[1])) + epsilon for i in range(weights.shape[0])]).reshape(1, BL_SIZE, 1)
+                weights[:, BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE] = np.copy(weights_new)    # only update the required block of weights
+            #print(weights)
             layer.set_weights(weights)
             #exit(1)
+
+
+        #all_weights = []
+        #for param in param_ids:
+        #    layer = optlearner_model.get_layer(param)
+        #    weights = np.array(layer.get_weights())
+        #    all_weights.append(weights[0])
+
+        #all_weights = np.concatenate(all_weights, axis=-1)
+        #print(all_weights)
+        #exit(1)
 
 
     def update_weights_artificially(epoch, logs):
@@ -149,7 +175,7 @@ def print_summary_wrapper(path):
     return print_summary
 
 
-def setup_train_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, data_samples, BATCH_SIZE, train_vis_dir, num_cb_samples=5, MODE="RODRIGUES", LOAD_DATA_DIR=None, use_generator=False, RESET_PERIOD=None):
+def setup_train_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, data_samples, BATCH_SIZE, train_vis_dir, num_cb_samples=5, MODE="RODRIGUES", LOAD_DATA_DIR=None, use_generator=False, RESET_PERIOD=None, groups=None, TRAIN_PERIOD=5):
     # Gather trainable params
     param_ids = ["param_{:02d}".format(i) for i in range(85)]
     trainable_params = format_offsetable_params(trainable_params)
@@ -162,6 +188,13 @@ def setup_train_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET
     PARAMS_TO_OFFSET = format_offsetable_params(PARAMS_TO_OFFSET)
     POSE_OFFSET = format_distractor_dict(POSE_OFFSET, PARAMS_TO_OFFSET)
 
+    # Define the kinematic tree
+    kin_tree = format_joint_levels(groups)
+    #print(kin_tree)
+    efficient_kin_tree = [[param for param in level if param in trainable_params] for level in kin_tree]
+    efficient_kin_tree = [entry for entry in efficient_kin_tree if entry]   # filter empty entries
+    #print(efficient_kin_tree)
+
     # Generate the data from the SMPL parameters
     print("loading SMPL...")
     smpl = SMPLModel('/data/cvfs/hjhb2/projects/deep_optimiser/code/keras_rotationnet_v2_demo_for_hidde/basicModel_f_lbs_10_207_0_v1.0.0.pkl')
@@ -170,21 +203,23 @@ def setup_train_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET
     print("Gather input data...")
     if use_generator:
         trainable_params_mask = [int(param_trainable[key]) for key in sorted(param_trainable.keys(), key=lambda x: int(x[6:8]))]
-        update_generator = OptLearnerUpdateGenerator(data_samples, RESET_PERIOD, POSE_OFFSET, PARAMS_TO_OFFSET, ARCHITECTURE, batch_size=BATCH_SIZE, smpl=smpl, shuffle=True, save_path=train_vis_dir, trainable_params_mask=trainable_params_mask)
+        update_generator = OptLearnerUpdateGenerator(data_samples, RESET_PERIOD, POSE_OFFSET, PARAMS_TO_OFFSET, ARCHITECTURE, batch_size=BATCH_SIZE, smpl=smpl, shuffle=True, save_path=train_vis_dir, trainable_params_mask=trainable_params_mask, kin_tree=efficient_kin_tree, train_period=TRAIN_PERIOD)
         X_train, Y_train = update_generator.yield_data()
         print("Y_train shapes: " + str([datum.shape for datum in Y_train]))
     else:
         update_generator = None
-        X_train, Y_train = gather_input_data(data_samples, smpl, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, param_trainable, num_test_samples=-1, MODE=MODE, LOAD_DATA_DIR=LOAD_DATA_DIR, use_generator=use_generator)
+        X_train, Y_train = gather_input_data(data_samples, smpl, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, param_trainable, num_test_samples=-1, MODE=MODE, LOAD_DATA_DIR=LOAD_DATA_DIR, use_generator=use_generator, kin_tree=efficient_kin_tree)
 
     # Render silhouettes for the callback data
     X_cb, Y_cb, silh_cb = gather_cb_data(X_train, Y_train, data_samples, num_cb_samples, where="spread")
 
-    return X_train, Y_train, X_cb, Y_cb, silh_cb, smpl, trainable_params, param_trainable, DISTRACTOR, update_generator
+    return X_train, Y_train, X_cb, Y_cb, silh_cb, smpl, trainable_params, param_trainable, DISTRACTOR, POSE_OFFSET, update_generator
 
 
-def setup_emb_initialiser(X_params, DISTRACTOR, period=None, OFFSET_NT=False, POSE_OFFSET=None, DIST="uniform"):
-    if OFFSET_NT:
+def setup_emb_initialiser(X_params, DISTRACTOR, period=None, OFFSET_NT=False, POSE_OFFSET=None, RESET_PRED_TO_ZERO=False, DIST="uniform"):
+    if RESET_PRED_TO_ZERO:
+        emb_initialiser = emb_init_weights(X_params, period=period, distractor=DISTRACTOR, dist=DIST, reset_to_zero=RESET_PRED_TO_ZERO)
+    elif OFFSET_NT:
         emb_initialiser = emb_init_weights(X_params, period=period, distractor=DISTRACTOR, pose_offset=POSE_OFFSET, dist=DIST)
     else:
         emb_initialiser = emb_init_weights(X_params, period=period, distractor=DISTRACTOR, dist=DIST)
@@ -192,9 +227,9 @@ def setup_emb_initialiser(X_params, DISTRACTOR, period=None, OFFSET_NT=False, PO
     return emb_initialiser
 
 
-def setup_train_model(ARCHITECTURE, data_samples, param_trainable, emb_initialiser, INPUT_TYPE, LR, LOSSES_WEIGHTS, GROUPS):
+def setup_train_model(ARCHITECTURE, data_samples, param_trainable, emb_initialiser, INPUT_TYPE, LR, LOSSES_WEIGHTS, GROUPS, UPDATE_WEIGHT):
     # Retrieve model architecture and load weights
-    optlearner_model = construct_optlearner_model(ARCHITECTURE, param_trainable, emb_initialiser, data_samples, INPUT_TYPE, GROUPS)
+    optlearner_model = construct_optlearner_model(ARCHITECTURE, param_trainable, emb_initialiser, data_samples, INPUT_TYPE, GROUPS, UPDATE_WEIGHT)
 
     # Compile the model
     optimizer = Adam(lr=LR, decay=0.0)
@@ -212,7 +247,7 @@ def setup_train_model(ARCHITECTURE, data_samples, param_trainable, emb_initialis
     return optlearner_model
 
 
-def setup_train_cb(model_dir, MODEL_SAVE_PERIOD, USE_GENERATOR, logs_dir, smpl, X_cb, silh_cb, train_vis_dir, PREDICTION_PERIOD, trainable_params, RESET_PERIOD, data_samples, DISTRACTOR, optlearner_model, update_generator, OFFSET_NT, POSE_OFFSET, exp_dir, DIST):
+def setup_train_cb(model_dir, MODEL_SAVE_PERIOD, USE_GENERATOR, logs_dir, smpl, X_cb, silh_cb, train_vis_dir, PREDICTION_PERIOD, trainable_params, RESET_PERIOD, data_samples, DISTRACTOR, optlearner_model, update_generator, OFFSET_NT, POSE_OFFSET, exp_dir, DIST, RESET_PRED_TO_ZERO, ARCHITECTURE):
     # Callback functions
     # Create a model checkpoint after every few epochs
     model_save_checkpoint = ModelCheckpoint(
@@ -222,17 +257,18 @@ def setup_train_cb(model_dir, MODEL_SAVE_PERIOD, USE_GENERATOR, logs_dir, smpl, 
 
     # Predict on sample params at the end of every few epochs
     if USE_GENERATOR:
-        epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=False, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples, train_gen=train_vis_dir)
+        epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=False, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples, train_gen=train_vis_dir, ARCHITECTURE=ARCHITECTURE)
     else:
-        epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=False, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples)
+        epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=False, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples, ARCHITECTURE=ARCHITECTURE)
         #epoch_pred_cb = OptLearnerPredOnEpochEnd(logs_dir, smpl, train_inputs=X_cb, train_silh=silh_cb, pred_path=train_vis_dir, period=PREDICTION_PERIOD, trainable_params=trainable_params, visualise=False, testing=True, RESET_PERIOD=RESET_PERIOD, data_samples=data_samples)
 
     # Callback for distractor unit
     if USE_GENERATOR:
-        weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, generator=update_generator, offset_nt=OFFSET_NT, pose_offset=POSE_OFFSET, dist=DIST)
+        weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, generator=update_generator, offset_nt=OFFSET_NT, pose_offset=POSE_OFFSET, dist=DIST, reset_to_zero=RESET_PRED_TO_ZERO)
     else:
-        weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, offset_nt=OFFSET_NT, pose_offset=POSE_OFFSET, dist=DIST)
-    weight_cb = LambdaCallback(on_epoch_end=lambda epoch, logs: weight_cb_wrapper(epoch, logs))
+        weight_cb_wrapper = update_weights_wrapper(DISTRACTOR, data_samples, RESET_PERIOD, trainable_params, optlearner_model, offset_nt=OFFSET_NT, pose_offset=POSE_OFFSET, dist=DIST, reset_to_zero=RESET_PRED_TO_ZERO)
+    #weight_cb = LambdaCallback(on_epoch_end=lambda epoch, logs: weight_cb_wrapper(epoch, logs))
+    weight_cb = LambdaCallback(on_epoch_begin=lambda epoch, logs: weight_cb_wrapper(epoch, logs))
 
     # Callback for loss plotting during training
     plotting_cb = OptLearnerLossGraphCallback(exp_dir, graphing_period=100)
@@ -242,7 +278,7 @@ def setup_train_cb(model_dir, MODEL_SAVE_PERIOD, USE_GENERATOR, logs_dir, smpl, 
 
     # Parameter error callback
     if USE_GENERATOR:
-        param_error_cb = GeneratorParamErrorCallback(exp_dir, update_generator, PREDICTION_PERIOD)
+        param_error_cb = GeneratorParamErrorCallback(exp_dir, update_generator, PREDICTION_PERIOD, ARCHITECTURE)
         callbacks.append(param_error_cb)
 
     return callbacks
@@ -266,6 +302,7 @@ def train_model(setup_params, run_id):
     DATA_LOAD_DIR = setup_params["DATA"]["TRAIN_DATA_DIR"]
     POSE_OFFSET = setup_params["DATA"]["POSE_OFFSET"]
     OFFSET_NT = setup_params["DATA"]["OFFSET_NT"]
+    RESET_PRED_TO_ZERO = setup_params["DATA"]["RESET_PRED_TO_ZERO"]
     PARAMS_TO_OFFSET = setup_params["DATA"]["PARAMS_TO_OFFSET"]
     USE_GENERATOR = setup_params["DATA"]["USE_GENERATOR"]
     DIST = setup_params["DATA"]["DIST"]
@@ -280,9 +317,12 @@ def train_model(setup_params, run_id):
     PC_LOSS_WEIGHT = setup_params["MODEL"]["PC_LOSS_WEIGHT"]
     DELTA_D_HAT_LOSS_WEIGHT = setup_params["MODEL"]["DELTA_D_HAT_LOSS_WEIGHT"]
     LOSSES_WEIGHTS = [DELTA_D_LOSS_WEIGHT, PC_LOSS_WEIGHT, DELTA_D_HAT_LOSS_WEIGHT]
+    TRAIN_PERIOD = setup_params["MODEL"]["TRAIN_PERIOD"]
 
     # Test setup
     groups = setup_params["TEST"]["joint_levels"]
+    test_lrs = setup_params["TEST"]["learning_rates"]
+    update_weight = test_lrs[0]
 
 
     """ Directory set-up """
@@ -292,23 +332,22 @@ def train_model(setup_params, run_id):
 
     """ Data set-up """
 
-
     # Parameter setup
-    X_train, Y_train, X_cb, Y_cb, silh_cb, smpl, trainable_params, param_trainable, DISTRACTOR, update_generator = setup_train_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, data_samples, BATCH_SIZE, train_vis_dir, num_cb_samples=NUM_CB_SAMPLES, MODE=MODE, LOAD_DATA_DIR=DATA_LOAD_DIR, use_generator=USE_GENERATOR, RESET_PERIOD=RESET_PERIOD)
+    X_train, Y_train, X_cb, Y_cb, silh_cb, smpl, trainable_params, param_trainable, DISTRACTOR, POSE_OFFSET, update_generator = setup_train_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, data_samples, BATCH_SIZE, train_vis_dir, num_cb_samples=NUM_CB_SAMPLES, MODE=MODE, LOAD_DATA_DIR=DATA_LOAD_DIR, use_generator=USE_GENERATOR, RESET_PERIOD=RESET_PERIOD, groups=groups, TRAIN_PERIOD=TRAIN_PERIOD)
 
 
     """ Model set-up """
 
     # Set-up the embedding initialiser
-    emb_initialiser = setup_emb_initialiser(X_train[1], DISTRACTOR, period=None, OFFSET_NT=OFFSET_NT, POSE_OFFSET=POSE_OFFSET, DIST=DIST)
+    emb_initialiser = setup_emb_initialiser(X_train[1], DISTRACTOR, period=None, OFFSET_NT=OFFSET_NT, POSE_OFFSET=POSE_OFFSET, RESET_PRED_TO_ZERO=RESET_PRED_TO_ZERO, DIST=DIST)
 
     # Set-up the model
-    optlearner_model = setup_train_model(ARCHITECTURE, data_samples, param_trainable, emb_initialiser, INPUT_TYPE, learning_rate, LOSSES_WEIGHTS, groups)
+    optlearner_model = setup_train_model(ARCHITECTURE, data_samples, param_trainable, emb_initialiser, INPUT_TYPE, learning_rate, LOSSES_WEIGHTS, groups, update_weight)
     optlearner_model.summary()
 
     """ Callback set-up """
 
-    callbacks = setup_train_cb(model_dir, MODEL_SAVE_PERIOD, USE_GENERATOR, logs_dir, smpl, X_cb, silh_cb, train_vis_dir, PREDICTION_PERIOD, trainable_params, RESET_PERIOD, data_samples, DISTRACTOR, optlearner_model, update_generator, OFFSET_NT, POSE_OFFSET, exp_dir, DIST)
+    callbacks = setup_train_cb(model_dir, MODEL_SAVE_PERIOD, USE_GENERATOR, logs_dir, smpl, X_cb, silh_cb, train_vis_dir, PREDICTION_PERIOD, trainable_params, RESET_PERIOD, data_samples, DISTRACTOR, optlearner_model, update_generator, OFFSET_NT, POSE_OFFSET, exp_dir, DIST, RESET_PRED_TO_ZERO, ARCHITECTURE)
 
 
     """ Training loop"""
@@ -344,3 +383,4 @@ def train_model(setup_params, run_id):
     optlearner_model.save_weights(model_dir + "model.final.hdf5")
 
     return optlearner_model
+

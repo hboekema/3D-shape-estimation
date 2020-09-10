@@ -47,6 +47,8 @@ trainable_params = setup_params["PARAMS"]["TRAINABLE"]
 
 # Data setup
 LOAD_DATA_DIR = setup_params["DATA"]["TEST_DATA_DIR"]
+OFFSET_NT = setup_params["DATA"]["OFFSET_NT"]
+RESET_PRED_TO_ZERO = setup_params["DATA"]["RESET_PRED_TO_ZERO"]
 POSE_OFFSET = setup_params["DATA"]["POSE_OFFSET"]
 PARAMS_TO_OFFSET = setup_params["DATA"]["PARAMS_TO_OFFSET"]
 DIST = setup_params["DATA"]["DIST"]
@@ -117,13 +119,13 @@ if __name__ == "__main__":
     model, logs_dirs, control_logs_dirs, test_vis_dirs, control_dirs = setup_test_dir(exp_dir, JOINT_LEVELS, LEARNING_RATES)
 
     # Generate the data from the SMPL parameters
-    X_test, Y_test, X_cb, Y_cb, silh_cb, smpl, kin_tree, trainable_params, param_trainable, DISTRACTOR = setup_test_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, JOINT_LEVELS, data_samples, num_test_samples=num_test_samples, num_cb_samples=num_cb_samples, MODE=MODE, LOAD_DATA_DIR=LOAD_DATA_DIR)
+    X_test, Y_test, X_cb, Y_cb, silh_cb, smpl, kin_tree, trainable_params, param_trainable, DISTRACTOR, POSE_OFFSET = setup_test_data(trainable_params, DISTRACTOR, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, JOINT_LEVELS, data_samples, num_test_samples=num_test_samples, num_cb_samples=num_cb_samples, MODE=MODE, LOAD_DATA_DIR=LOAD_DATA_DIR)
 
     # Generate initial predictions
-    emb_initialiser, initial_weights = setup_embedding_weights(data_samples, X_test[1], DISTRACTOR, param_trainable, DIST=DIST)
+    emb_initialiser, initial_weights = setup_embedding_weights(data_samples, X_test[1], DISTRACTOR, param_trainable, DIST=DIST, OFFSET_NT=OFFSET_NT, POSE_OFFSET=POSE_OFFSET, RESET_PRED_TO_ZERO=RESET_PRED_TO_ZERO)
 
     # Set-up the model
-    optlearner_model = setup_test_model(model, ARCHITECTURE, data_samples, param_trainable, emb_initialiser, initial_weights, INPUT_TYPE, TRAIN_LR)
+    optlearner_model = setup_test_model(model, ARCHITECTURE, data_samples, param_trainable, emb_initialiser, initial_weights, INPUT_TYPE, TRAIN_LR, JOINT_LEVELS)
 
     # Create the visualisation callbacks
     epoch_pred_cbs = initialise_pred_cbs(logs_dirs, test_vis_dirs, smpl, X_cb, silh_cb, trainable_params, LEARNING_RATES)

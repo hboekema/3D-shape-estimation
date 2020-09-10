@@ -18,7 +18,7 @@ from render_mesh import Mesh
 from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, get_angular_distance_metric, emb_init_weights, angle_between_vectors, split_and_reshape_euler_angles
 
 
-def ConditionalOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS", groups=[]):
+def PeriodicOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000, input_type="3D_POINTS", groups=[], update_weight=1.0):
     """ Optimised learner network architecture """
     # An embedding layer is required to optimise the parameters
     optlearner_input = Input(shape=(1,), name="embedding_index")
@@ -50,6 +50,17 @@ def ConditionalOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params
     flattened_groups = [i for sublist in groups for i in sublist]
     print(flattened_groups)
     assert np.all([i in flattened_groups for i in range(24)])
+
+    # Params to train this epoch
+    params_to_train = Input(shape=(85,), dtype="bool", name="params_to_train")
+    print("params_to_train shape: " + str(params_to_train.shape))
+    params_to_train_indices = Lambda(lambda x: x[0])(params_to_train)
+    print("params_to_train_indices shape: " + str(params_to_train_indices.shape))
+    params_to_train_indices = Lambda(lambda x: K.tf.where(K.tf.cast(x, "bool")))(params_to_train_indices)
+    print("params_to_train_indices shape: " + str(params_to_train_indices.shape))
+    params_to_train_indices = Lambda(lambda x: K.squeeze(x, 1))(params_to_train_indices)
+    print("params_to_train_indices shape: " + str(params_to_train_indices.shape))
+    #exit(1)
 
     #DROPOUT = 0.1
     DROPOUT = 0.0
@@ -186,7 +197,7 @@ def ConditionalOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params
         # Update parameters
         old_params_group = Lambda(lambda x: K.tf.gather(x, indices, axis=-1))(old_params)
         print("old_params_group shape: " + str(old_params_group.shape))
-        new_params_group = Lambda(lambda x: x[0] + x[1])([old_params_group, delta_d_hat])
+        new_params_group = Lambda(lambda x: x[0] + update_weight*x[1])([old_params_group, delta_d_hat])
         print("new_params_group shape: " + str(new_params_group.shape))
         # Complete the parameter vector
         rem_params = Lambda(lambda x: K.tf.gather(x, rem_indices, axis=-1))(old_params)
@@ -278,8 +289,16 @@ def ConditionalOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params
     delta_d_hat = Lambda(lambda x: K.tf.gather(x, reordered_indices, axis=-1), name="delta_d_hat")(delta_d_hat)
     print("delta_d_hat shape: " + str(delta_d_hat.shape))
 
-    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD_FILTERED, delta_d_hat_FILTERED])
-    false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD, delta_d_hat])
+    #delta_d_hat_trainable = Lambda(lambda x: K.tf.boolean_mask(x[0], K.tf.cast(x[1], "bool")))([delta_d_hat, params_to_train])
+    #delta_d_NOGRAD_trainable = Lambda(lambda x: K.tf.boolean_mask(x[0], K.tf.cast(x[1], "bool")))([delta_d_NOGRAD, params_to_train])
+    delta_d_hat_trainable = Lambda(lambda x: K.tf.gather(x[0], K.tf.cast(x[1], "int32"), axis=-1))([delta_d_hat, params_to_train_indices])
+    print("delta_d_hat_trainable shape: " + str(delta_d_hat_trainable.shape))
+    delta_d_NOGRAD_trainable = Lambda(lambda x: K.tf.gather(x[0], K.tf.cast(x[1], "int32"), axis=-1))([delta_d_NOGRAD, params_to_train_indices])
+    print("delta_d_NOGRAD_trainable shape: " + str(delta_d_NOGRAD_trainable.shape))
+
+    #false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD, delta_d_hat])
+    false_loss_delta_d_hat = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=1))([delta_d_NOGRAD_trainable, delta_d_hat_trainable])
+    print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
     false_loss_delta_d_hat = Reshape(target_shape=(1,), name="delta_d_hat_mse")(false_loss_delta_d_hat)
     print("delta_d_hat loss shape: " + str(false_loss_delta_d_hat.shape))
 
@@ -300,5 +319,5 @@ def ConditionalOptLearnerArchitecture(param_trainable, init_wrapper, smpl_params
     false_loss_smpl = Multiply(name="smpl_diff")([optlearner_params, delta_d_hat_NOGRAD])
     print("smpl loss shape: " + str(false_loss_smpl.shape))
 
-    return [optlearner_input, gt_params, gt_pc], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles, per_param_mse]
+    return [optlearner_input, gt_params, gt_pc, params_to_train], [optlearner_params, false_loss_delta_d, optlearner_pc, false_loss_pc, false_loss_delta_d_hat, false_sin_loss_delta_d_hat,  false_loss_smpl, delta_d, delta_d_hat, dist_angles, per_param_mse]
 

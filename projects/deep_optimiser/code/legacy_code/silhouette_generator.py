@@ -3,15 +3,16 @@ import numpy as np
 import tensorflow as tf
 import keras
 import pickle
+import json
 
 from smpl_np import SMPLModel
 from render_mesh import Mesh
-from generate_data import gen_data
-from tools.data_helpers import architecture_output_array
+#from generate_data import gen_data
+from tools.data_helpers import architecture_output_array, gen_data
 
 
 class OptLearnerUpdateGenerator(keras.utils.Sequence):
-    def __init__(self, num_samples, reset_period, POSE_OFFSET, PARAMS_TO_OFFSET, ARCHITECTURE, batch_size=32, smpl=None, shuffle=True, save_path="./", num_trainable=24, trainable_params_mask=np.zeros((85,))):
+    def __init__(self, num_samples, reset_period, POSE_OFFSET, PARAMS_TO_OFFSET, ARCHITECTURE, batch_size=32, smpl=None, shuffle=True, save_path="./", num_trainable=24, trainable_params_mask=np.zeros((85,)), kin_tree=None, train_period=5, dist="uniform"):
         self.num_samples = num_samples
         self.reset_period = reset_period
         if isinstance(POSE_OFFSET, (int, float)):
@@ -21,17 +22,33 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
             k = POSE_OFFSET
         self.k = k
         self.PARAMS_TO_OFFSET = PARAMS_TO_OFFSET
+        recognised_dists = ["uniform", "gaussian", "normal"]
+        assert dist in recognised_dists, "distribution not implemented"
+        self.dist = dist
         self.ARCHITECTURE = ARCHITECTURE
         self.batch_size = batch_size
         if smpl is None:
             smpl = SMPLModel('./keras_rotationnet_v2_demo_for_hidde/basicModel_f_lbs_10_207_0_v1.0.0.pkl')
         self.smpl = smpl
         self.shuffle = shuffle
-        self.params, self.pcs = gen_data(POSE_OFFSET, PARAMS_TO_OFFSET, self.smpl, data_samples=num_samples, save_dir=None, render_silhouette=False)
+        self.params, self.pcs = gen_data(POSE_OFFSET, PARAMS_TO_OFFSET, self.smpl, data_samples=num_samples, save_dir=None, render_silhouette=False, dist=dist)
         self.indices = np.array([i for i in range(num_samples)])
         self.save_path = save_path
         self.num_trainable = num_trainable
         self.trainable_params_mask = trainable_params_mask
+        self.kin_tree = []
+        for level in kin_tree:
+            level_params = []
+            for param in level:
+                level_params.append(int(param.replace("param_", "")))
+            self.kin_tree.append(level_params)
+        self.curr_kin_level = 0
+        self.params_ordered = [i for i in range(85)]
+        self.train_period = train_period
+        if self.train_period > 0:
+            self.params_to_train = [param in self.kin_tree[self.curr_kin_level] for param in self.params_ordered]
+        else:
+            self.params_to_train = [1 for _ in range(85)]
         #print("generator params shape at init: " + str(self.params.shape))
         #print("generator pcs shape at init: " + str(self.pcs.shape))
         print("generator params first entry: " + str(self.params[0]))
@@ -52,10 +69,15 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
                     mask_to_save = np.tile(self.trainable_params_mask, (len(self.cb_samples), 1))
                     np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples],\
                             trainable_params=mask_to_save)
+                elif self.ARCHITECTURE == "PeriodicOptLearnerArchitecture":
+                    save_params_to_train = np.tile(self.params_to_train, (len(self.cb_samples), 1))
+                    np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples],\
+                            params_to_train=save_params_to_train)
                 else:
                     np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples])
 
-    def update_samples(self, epoch):
+
+    def update_samples(self, epoch, render=True):
         if epoch >= 0:
             BL_SIZE = self.num_samples // self.reset_period
             #print("epoch: " + str(self.epoch))
@@ -69,26 +91,45 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
             sorted_keys_num = [int(x[6:8]) for x in sorted_keys]
             #print(sorted_keys)
             sorted_offsets = [self.k[key] for key in sorted_keys]
+            size = (BL_SIZE, len(sorted_keys_num))
 
             np.random.seed(epoch)
-            weights_new = np.array(1-2*np.random.rand(BL_SIZE, len(sorted_keys_num))) * sorted_offsets
+            if self.dist == "uniform":
+                weights_new = np.random.uniform(low=-1, high=1, size=size) * sorted_offsets
+            elif self.dist == "gaussian" or self.dist == "normal":
+                weights_new = np.random.normal(size=size, scale=1.0, loc=0.0) * sorted_offsets
+            else:
+                weights_new = None
+                assert False, "distribution not implemented"
             #print(weights_new)
             #print("weights_new shape: " + str(weights_new.shape))
             #print(BL_INDEX*BL_SIZE)
             #print((BL_INDEX+1)*BL_SIZE)
             self.params[BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE, sorted_keys_num] = weights_new    # only update the required block of weights
 
+            # Update the current kinematic level to be updated and the corresponding parameters
+            num_levels = len(self.kin_tree)
+            self.curr_kin_level = int((epoch - (epoch % self.train_period)) / self.train_period) % num_levels
+            if self.train_period > 0:
+                self.params_to_train = [param in self.kin_tree[self.curr_kin_level] for param in self.params_ordered]
+            else:
+                self.params_to_train = [1 for _ in range(85)]
+            #print("curr_level: " + str(self.curr_kin_level))
+            #print("params_to_train: " + str(self.params_to_train))
+
             # Now render the point clouds for the new weights
-            updated_params = self.params[BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE]
-            for i, params in enumerate(updated_params, BL_INDEX*BL_SIZE):
-                updated_pc = self.smpl.set_params(beta=params[72:82], pose=params[0:72], trans=params[82:85])
-                self.pcs[i] = updated_pc
+            if render:
+                updated_params = self.params[BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE]
+                for i, params in enumerate(updated_params, BL_INDEX*BL_SIZE):
+                    updated_pc = self.smpl.set_params(beta=params[72:82], pose=params[0:72], trans=params[82:85])
+                    self.pcs[i] = updated_pc
 
             return self.params, self.pcs
 
     def on_epoch_end(self):
         # NOTE - this function is NOT thread-safe
         #print("\nEPOCH: " + str(self.epoch) + "\n")
+        print("\nTrain data generator on_epoc_end at EPOCH: " + str(self.epoch) + "\n")
         # Distract selected base poses
         # Update a block of parameters
         #print("Distracting base pose...")
@@ -108,6 +149,10 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
                         mask_to_save = np.tile(self.trainable_params_mask, (len(self.cb_samples), 1))
                         np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples],\
                                 trainable_params=mask_to_save)
+                    elif self.ARCHITECTURE == "PeriodicOptLearnerArchitecture":
+                        save_params_to_train = np.tile(self.params_to_train, (len(self.cb_samples), 1))
+                        np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples],\
+                                params_to_train=save_params_to_train)
                     else:
                         np.savez(f, indices=self.cb_samples, params=self.params[self.cb_samples], pcs=self.pcs[self.cb_samples])
 
@@ -130,25 +175,31 @@ class OptLearnerUpdateGenerator(keras.utils.Sequence):
         X_batch_pc = self.pcs[X_batch_index]
         #print(X_batch_params[0])
 
+        #print("Batch GT mean: " + str(np.mean(X_batch_params, axis=0)) + "\nBatch GT SD: " + str(np.std(X_batch_params, axis=0)))
+
         X_batch = [np.array(X_batch_index), np.array(X_batch_params), np.array(X_batch_pc)]
         Y_batch = architecture_output_array(self.ARCHITECTURE, self.batch_size, self.num_trainable)
         #print("Y_batch batch size: " + str(Y_batch[0].shape))
 
         if self.ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
             X_batch += [np.tile(self.trainable_params_mask, (self.batch_size, 1))]
+        if self.ARCHITECTURE == "PeriodicOptLearnerArchitecture":
+            X_batch += [np.tile(self.params_to_train, (self.batch_size, 1))]
 
         return X_batch, Y_batch
 
-    def yield_data(self, epoch=0):
+    def yield_data(self, epoch=0, render=True):
         """ Yield all of the data, correctly ordered """
         ordered_indices = [i for i in range(self.num_samples)]
         if epoch > 0:
-            self.update_samples(epoch)
+            self.update_samples(epoch, render=render)
         X_data = [np.array(ordered_indices), np.array(self.params), np.array(self.pcs)]
         Y_data = architecture_output_array(self.ARCHITECTURE, self.num_samples, self.num_trainable)
 
         if self.ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
             X_data += [np.tile(self.trainable_params_mask, (self.num_samples, 1))]
+        if self.ARCHITECTURE == "PeriodicOptLearnerArchitecture":
+            X_data += [np.tile(self.params_to_train, (self.num_samples, 1))]
 
         return X_data, Y_data
 

@@ -25,10 +25,14 @@ def trainable_param_metric(trainable_params):
 
 def false_loss(y_true, y_pred):
     """ Loss function that simply returns the predicted value (i.e. target is 0) """
-    return y_pred
+    return K.mean(y_pred)    # @TODO: ascertain that K.mean() does not change results
+
+def false_loss_summed(y_true, y_pred):
+    """ Loss function that simply returns the predicted value (i.e. target is 0) """
+    return K.sum(y_pred)    # @TODO: ascertain that K.sum() does not change results
 
 def no_loss(y_true, y_pred):
-    return K.tf.reduce_sum(K.tf.multiply(y_true, 0))
+    return K.sum(y_true*0.0)
 
 def cat_xent(true_indices, y_pred):
     pred_probs = K.tf.gather_nd(y_pred, true_indices, batch_dims=1)
@@ -65,6 +69,35 @@ def geodesic_loss(y_true, y_pred):
     print("geodesic_error shape: " + str(geodesic_error.shape))
 
     return geodesic_error
+
+def rotation_loss(y_true, y_pred):
+    """ Rotate a unit vector by 3D rotation matrices y_true and y_pred (of shape [batch_dim, num_joints, 3, 3]) and take MSE over the resulting vectors """
+    unit_vector = [[0., 0., 1.]]
+    unit_vector = K.constant(unit_vector, dtype="float")
+    print("unit_vector shape: " + str(unit_vector.shape))
+    unit_vector = Lambda(lambda x, unit_vector: K.tf.tile(unit_vector, [K.tf.shape(x)[0], 24]), arguments={'unit_vector': unit_vector})(y_true)
+    print("unit_vector shape: " + str(unit_vector.shape))
+    unit_vector = Reshape((24, 3, 1))(unit_vector)
+    print("unit_vector shape: " + str(unit_vector.shape))
+
+    print("y_true shape: " + str(y_true.shape))
+    print("y_pred shape: " + str(y_pred.shape))
+
+    true_vector = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[3, 2]))([y_true, unit_vector])
+    print("true_vector shape: " + str(true_vector.shape))
+    true_vector = Reshape((-1, 3))(true_vector)
+    print("true_vector shape: " + str(true_vector.shape))
+
+    pred_vector = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[3, 2]))([y_pred, unit_vector])
+    print("pred_vector shape: " + str(pred_vector.shape))
+    pred_vector = Reshape((-1, 3))(pred_vector)
+    print("pred_vector shape: " + str(pred_vector.shape))
+
+
+    rotational_error = Lambda(lambda x: K.mean(K.square(x[0] - x[1]), axis=-1))([true_vector, pred_vector])
+    print("rotational_error shape: " + str(rotational_error.shape))
+
+    return rotational_error
 
 # Custom activation functions
 def scaled_tanh(x):
@@ -443,53 +476,69 @@ def init_emb_layers(index, emb_size, param_trainable, init_wrapper):
         """ Initialise the parameter embedding layers """
         emb_layers = []
         num_params = 85
+        blacklist = range(72, 85)
         for i in range(num_params):
             layer_name = "param_{:02d}".format(i)
-            initialiser = init_wrapper(param=i, offset=param_trainable[layer_name])
+            initialiser = init_wrapper(parameter=i)
 
-            emb_layer = Embedding(emb_size, 1, name=layer_name, trainable=param_trainable[layer_name], embeddings_initializer=initialiser)(index)
+            if i in blacklist:
+                trainable = False
+            else:
+                trainable = param_trainable[layer_name]
+            #emb_layer = Embedding(emb_size, 1, name=layer_name, trainable=param_trainable[layer_name], embeddings_initializer=initialiser)(index)
+            emb_layer = Embedding(emb_size, 1, name=layer_name, trainable=trainable, embeddings_initializer=initialiser)(index)
             emb_layers.append(emb_layer)
 
         return emb_layers
 
-def emb_init_weights(emb_params, period=None, distractor=np.pi, pose_offset={}, dist="uniform"):
-    """ Embedding weights initialiser """
-    recognised_modes = ["uniform", "gaussian", "normal"]
-    assert dist in recognised_modes
-
-    def emb_init_wrapper(param, offset=False):
-        def emb_init(shape):
-            """ Initializer for the embedding layer """
-            curr_emb_param = K.tf.gather(emb_params, param, axis=-1)
-            curr_emb_param = K.tf.cast(curr_emb_param, dtype="float32")
-
-            if offset or "param_{:02d}".format(param) in pose_offset.keys():
-                if offset:
-                    k = K.constant(distractor["param_{:02d}".format(param)])
-                else:
-                    k = K.constant(pose_offset["param_{:02d}".format(param)])
-
-                if dist == "uniform":
-                    offset_value = K.random_uniform(shape=[shape[0]], minval=-k, maxval=k, dtype="float32")
-                elif dist == "normal" or dist == "gaussian":
-                    offset_value = K.random_normal(shape=[shape[0]], mean=0.0, stddev=k, dtype="float32")
-
-                #print(offset_value)
-                #exit(1)
-                if period is not None and shape[0] % period == 0:
-                    block_size = shape[0] // period
-                    #factors = Concatenate()([K.random_normal(shape=[block_size], mean=np.sqrt((i+1)/period), stddev=0.01) for i in range(period)])
-                    factors = Concatenate()([K.random_normal(shape=[block_size], mean=np.sqrt(float(i+1)/period), stddev=0.01) for i in range(period)])
-                    offset_value = Multiply()([offset_value, factors])
-
-                curr_emb_param = Add()([curr_emb_param, offset_value])
-
-            init = Reshape(target_shape=[shape[1]])(curr_emb_param)
-            #print("init shape: " + str(init.shape))
-            #exit(1)
-            return init
-        return emb_init
-    return emb_init_wrapper
+#def emb_init_weights(emb_params, period=None, distractor=np.pi, pose_offset={}, dist="uniform", reset_to_zero=False):
+#    """ Embedding weights initialiser """
+#    recognised_modes = ["uniform", "gaussian", "normal"]
+#    assert dist in recognised_modes
+#
+#    def emb_init_wrapper(param, offset=False):
+#        def emb_init(shape):
+#            """ Initializer for the embedding layer """
+#            curr_emb_param = K.tf.gather(emb_params, param, axis=-1)
+#            curr_emb_param = K.tf.cast(curr_emb_param, dtype="float32")
+#            epsilon = 1e-5
+#
+#            if reset_to_zero:
+#                #print(emb_params.shape)
+#                epsilon = K.constant(np.tile(epsilon, shape))
+#                #print(epsilon.shape)
+#                curr_emb_param = K.zeros_like(curr_emb_param)
+#                #print(curr_emb_param.shape)
+#                curr_emb_param = Add()([curr_emb_param, epsilon])
+#                #print(curr_emb_param.shape)
+#                #exit(1)
+#            elif offset or "param_{:02d}".format(param) in pose_offset.keys():
+#                if offset:
+#                    k = K.constant(distractor["param_{:02d}".format(param)])
+#                else:
+#                    k = K.constant(pose_offset["param_{:02d}".format(param)])
+#
+#                if dist == "uniform":
+#                    offset_value = K.random_uniform(shape=[shape[0]], minval=-k, maxval=k, dtype="float32")
+#                elif dist == "normal" or dist == "gaussian":
+#                    offset_value = K.random_normal(shape=[shape[0]], mean=0.0, stddev=k, dtype="float32")
+#
+#                #print(offset_value)
+#                #exit(1)
+#                if period is not None and shape[0] % period == 0:
+#                    block_size = shape[0] // period
+#                    #factors = Concatenate()([K.random_normal(shape=[block_size], mean=np.sqrt((i+1)/period), stddev=0.01) for i in range(period)])
+#                    factors = Concatenate()([K.random_normal(shape=[block_size], mean=np.sqrt(float(i+1)/period), stddev=0.01) for i in range(period)])
+#                    offset_value = Multiply()([offset_value, factors])
+#
+#                curr_emb_param = Add()([curr_emb_param, offset_value])
+#
+#            init = Reshape(target_shape=[shape[1]])(curr_emb_param)
+#            #print("init shape: " + str(init.shape))
+#            #exit(1)
+#            return init
+#        return emb_init
+#    return emb_init_wrapper
 
 def custom_mod(x, k=K.constant(np.pi), name="custom_mod"):
     """ Custom mod function """

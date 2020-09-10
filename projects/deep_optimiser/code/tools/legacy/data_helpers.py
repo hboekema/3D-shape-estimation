@@ -6,7 +6,7 @@ from render_mesh import Mesh
 from rotation_helpers import rodrigues_to_euler
 
 
-def gen_data(POSE_OFFSET, PARAMS_TO_OFFSET, smpl, data_samples=10000, save_dir=None, render_silhouette=True):
+def gen_data(POSE_OFFSET, PARAMS_TO_OFFSET, smpl, data_samples=10000, save_dir=None, render_silhouette=True, dist="uniform"):
     """ Generate random body poses """
     POSE_OFFSET = format_distractor_dict(POSE_OFFSET, PARAMS_TO_OFFSET)
 
@@ -18,7 +18,7 @@ def gen_data(POSE_OFFSET, PARAMS_TO_OFFSET, smpl, data_samples=10000, save_dir=N
     X_indices = np.array([i for i in range(data_samples)])
     X_params = np.array([zero_params for i in range(data_samples)], dtype="float32")
     if not all(value == 0.0 for value in POSE_OFFSET.values()):
-        X_params = offset_params(X_params, PARAMS_TO_OFFSET, POSE_OFFSET)
+        X_params = offset_params(X_params, PARAMS_TO_OFFSET, POSE_OFFSET, dist=dist)
         X_pcs = np.array([smpl.set_params(beta=params[72:82], pose=params[0:72], trans=params[82:85]) for params in X_params])
     else:
         X_pcs = np.array([zero_pc for i in range(data_samples)], dtype="float32")
@@ -150,13 +150,18 @@ def format_offsetable_params(offsetable_params):
         offsetable_params_indices = [index for index in range(85) if index not in not_trainable and index < 72]
         #offsetable_params_indices = [index for index in range(85) if index not in not_trainable and index < 66]
         offsetable_params = [param_ids[index] for index in offsetable_params_indices]
+    elif offsetable_params == "all_pose_and_3D_global_rotation":
+        not_trainable = []
+        offsetable_params_indices = [index for index in range(85) if index not in not_trainable and index < 72]
+        #offsetable_params_indices = [index for index in range(85) if index not in not_trainable and index < 66]
+        offsetable_params = [param_ids[index] for index in offsetable_params_indices]
 
     assert np.all([param in param_ids for param in offsetable_params])
 
     return offsetable_params
 
 
-def offset_params(X_params, params_to_offset, DISTRACTOR=np.pi):
+def offset_params(X_params, params_to_offset, DISTRACTOR=np.pi, dist="uniform"):
     """ Apply initial offset k to params_to_offset in X_params """
     if isinstance(DISTRACTOR, (int, float)):
         k = {param: DISTRACTOR for param in params_to_offset}
@@ -164,11 +169,63 @@ def offset_params(X_params, params_to_offset, DISTRACTOR=np.pi):
         # k must be a dict with an entry for each variable parameter
         k = DISTRACTOR
 
-    offset_params_int = [int(param[6:8]) for param in params_to_offset]
+    offset_params_int = [int(param.replace("param_", "")) for param in params_to_offset]
     data_samples = X_params.shape[0]
-    X_params[:, offset_params_int] = np.array([k[param] * (1 - 2*np.random.rand(data_samples)) for param in params_to_offset]).T
+    if dist == "uniform":
+        weights_new = np.array([k[param] * (1 - 2*np.random.rand(data_samples)) for param in params_to_offset]).T
+    elif dist == "gaussian" or dist == "normal":
+        weights_new = np.array([k[param] * np.random.normal(size=data_samples, loc=0.0, scale=1.0) for param in params_to_offset]).T
+    else:
+        weights_new = None
+        assert False, "distribution not implemented"
+    print("weights_new shape: " + str(weights_new.shape))
+    print("X_params shape: " + str(X_params.shape))
+    #exit(1)
+    X_params[:, offset_params_int] = weights_new
 
     return X_params
+
+
+def sample_from_dist(k, dist, size):
+    if dist == "gaussian" or dist == "normal":
+        samples = np.random.normal(loc=0.0, scale=k, size=size)
+    elif dist == "uniform":
+        samples = np.random.uniform(low=-k, high=k, size=size)
+
+    return samples
+
+
+def get_new_weights(DISTRACTOR, trainable_params, gt_params, offset_nt={}, dist="uniform", reset_to_zero=False, BL_INDEX=0, BL_SIZE=None):
+    params = [i for i in range(85)]
+    if BL_SIZE is None:
+        BL_SIZE = gt_params.shape[0]
+    size_tuple = (BL_SIZE, )
+    epsilon = 1e-5
+
+    all_new_weights = np.zeros((1, BL_SIZE, 85))
+    for param in params:
+        param_id = "param_{:02d}".format(param)
+        if reset_to_zero:
+            new_weights = np.zeros(size_tuple) + 1e-5
+        elif param_id in trainable_params:
+            new_weights = sample_from_dist(DISTRACTOR[param_id], dist, size_tuple)
+        elif param_id in offset_nt.keys():
+            new_weights = sample_from_dist(offset_nt[param_id], dist, size_tuple)
+        else:
+            new_weights = gt_params[BL_INDEX*BL_SIZE:(BL_INDEX+1)*BL_SIZE, param].reshape((1, BL_SIZE, 1))
+        #print("new weights shape: " +str(new_weights.shape))
+        all_new_weights[:, :, param] = np.reshape(new_weights, size_tuple)
+        #print("all new weights shape: " +str(all_new_weights.shape))
+
+    return all_new_weights
+
+
+def save_dist_info(filepath, params, epoch):
+    with open(filepath, 'a') as f:
+        dist_mean = np.mean(params, axis=0)
+        dist_std = np.std(params, axis=0)
+        info = {"epoch": epoch, "mean": dist_mean, "std": dist_std}
+        f.write(str(info))
 
 
 def architecture_output_array(ARCHITECTURE, data_samples, num_trainable=24):
@@ -188,9 +245,7 @@ def architecture_output_array(ARCHITECTURE, data_samples, num_trainable=24):
     elif ARCHITECTURE == "DeepConv1DOptLearnerStaticArchitecture":
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
     elif ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
-        #Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85))]
-        #Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 37)), np.zeros((data_samples, 85))]
     elif ARCHITECTURE == "ResConv1DOptLearnerStaticArchitecture":
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31))]
     elif ARCHITECTURE == "ProbCNNOptLearnerStaticArchitecture":
@@ -205,6 +260,9 @@ def architecture_output_array(ARCHITECTURE, data_samples, num_trainable=24):
     elif ARCHITECTURE == "ConditionalOptLearnerArchitecture":
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85))]
     elif ARCHITECTURE == "GroupedConv1DOptLearnerArchitecture":
+        #Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85))]
+        Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31, 3)), np.zeros((data_samples, 31, 3))]
+    elif ARCHITECTURE == "PeriodicOptLearnerArchitecture":
         Y_data = [np.zeros((data_samples, 85)), np.zeros((data_samples,)), np.zeros((data_samples, 6890, 3)), np.zeros((data_samples,)), np.zeros((data_samples,)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 85)), np.zeros((data_samples, 31)), np.zeros((data_samples, 85))]
     else:
         raise ValueError("Architecture '{}' not recognised".format(ARCHITECTURE))
@@ -212,7 +270,7 @@ def architecture_output_array(ARCHITECTURE, data_samples, num_trainable=24):
     return Y_data
 
 
-def gather_input_data(data_samples, smpl, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, param_trainable, num_test_samples=5, MODE="RODRIGUES", LOAD_DATA_DIR=None):
+def gather_input_data(data_samples, smpl, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITECTURE, param_trainable, num_test_samples=5, MODE="RODRIGUES", LOAD_DATA_DIR=None, kin_tree=[], dist="uniform"):
     # Prepare initial input data
     zero_params = np.zeros(shape=(85,))
     zero_pc = smpl.set_params(beta=zero_params[72:82], pose=zero_params[0:72].reshape((24,3)), trans=zero_params[82:85])
@@ -222,50 +280,61 @@ def gather_input_data(data_samples, smpl, PARAMS_TO_OFFSET, POSE_OFFSET, ARCHITE
 
     if LOAD_DATA_DIR is not None:
         # Load data from existing directory
-        X_params, X_pcs = load_data(LOAD_DATA_DIR, num_samples=data_samples, load_silhouettes=False)
+        all_X_params, all_X_pcs = load_data(LOAD_DATA_DIR, num_samples=data_samples, load_silhouettes=False)
     else:
         # Generate the data
         if not all(value == 0.0 for value in POSE_OFFSET.values()):
             print("Offsetting parameters...")
-            all_params = offset_params(zero_params, PARAMS_TO_OFFSET, POSE_OFFSET)
+            all_params = offset_params(zero_params, PARAMS_TO_OFFSET, POSE_OFFSET, dist=dist)
             if num_test_samples > 0:
-                assert data_samples % num_test_samples == 0
+                assert data_samples > num_test_samples
                 X_params = all_params[:num_test_samples]
             print("X_params shape: " + str(X_params.shape))
             print("Rendering parameters...")
             X_pcs = np.array([np.array(smpl.set_params(beta=params[72:82], pose=params[0:72].reshape((24, 3)), trans=params[82:85]).copy()) for params in X_params])
             print("X_pcs shape: " + str(X_pcs.shape))
 
+            all_X_pcs = np.zeros((data_samples, 6890, 3))
+            all_X_params = np.zeros((data_samples, 85))
             if num_test_samples > 0:
-                times_to_repeat = int(data_samples/num_test_samples)
+                all_X_pcs[:num_test_samples] = X_pcs
+                print("all_X_pcs shape: " + str(all_X_pcs.shape))
 
-                X_pcs = X_pcs.copy()
-                X_pcs = np.tile(X_pcs, (times_to_repeat, 1, 1))
-                print("X_pcs shape: " + str(X_pcs.shape))
-
-                X_params = np.tile(X_params, (times_to_repeat, 1))
-                #X_params = np.array([X_params for i in range(data_samples/num_test_samples)], dtype=np.float32).reshape((data_samples, 85))
-                print("X_params shape: " + str(X_params.shape))
+                all_X_params[:num_test_samples] = X_params
+                print("all_X_params shape: " + str(all_X_params.shape))
         else:
             zero_params = np.zeros(shape=(85,))
             zero_pc = smpl.set_params(beta=zero_params[72:82], pose=zero_params[0:72].reshape((24,3)), trans=zero_params[82:85])
             #print("zero_pc: " + str(zero_pc))
-            X_params = zero_params
-            X_pcs = np.array([zero_pc for i in range(data_samples)], dtype="float32")
+            all_X_params = zero_params
+            all_X_pcs = np.array([zero_pc for i in range(data_samples)], dtype="float32")
 
     if MODE == "EULER":
         # Convert from Rodrigues to Euler angles
-        X_params = rodrigues_to_euler(X_params, smpl)
+        all_X_params = rodrigues_to_euler(all_X_params, smpl)
 
-    X_data = [np.array(X_indices), np.array(X_params), np.array(X_pcs)]
+    X_data = [np.array(X_indices), np.array(all_X_params), np.array(all_X_pcs)]
     Y_data = architecture_output_array(ARCHITECTURE, data_samples)
 
     if ARCHITECTURE == "NewDeepConv1DOptLearnerArchitecture":
         trainable_params_mask = [int(param_trainable[key]) for key in sorted(param_trainable.keys(), key=lambda x: int(x[6:8]))]
         #print(trainable_params_mask)
         trainable_params_mask = np.tile(trainable_params_mask, (data_samples, 1))
-        print("trainable_maks_shape: " + str(trainable_params_mask.shape))
+        print("trainable_params_mask shape: " + str(trainable_params_mask.shape))
         X_data += [trainable_params_mask]
+
+    if ARCHITECTURE == "PeriodicOptLearnerArchitecture":
+        new_kin_tree = []
+        for level in kin_tree:
+            level_params = []
+            for param in level:
+                level_params.append(param.replace("param_", ""))
+            new_kin_tree.append(level_params)
+
+        params_to_train = [1 for _ in range(85)]
+        params_to_train = np.tile(params_to_train, (data_samples, 1))
+        print("params_to_train shape: " + str(params_to_train.shape))
+        X_data += [params_to_train]
 
     return X_data, Y_data
 

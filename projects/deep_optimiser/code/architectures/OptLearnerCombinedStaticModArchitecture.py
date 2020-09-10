@@ -15,7 +15,9 @@ from points3d import Points3DFromSMPLParams, get_parameters
 from smpl_np_rot_v6 import load_params
 #from smpl_tf import smpl_model, smpl_model_batched
 from render_mesh import Mesh
-from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights
+#from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric, emb_init_weights
+from architecture_helpers import custom_mod, init_emb_layers, false_loss, no_loss, cat_xent, mape, scaled_tanh, pos_scaled_tanh, scaled_sigmoid, centred_linear, get_mesh_normals, load_smpl_params, get_pc, get_sin_metric
+from initialisers import emb_init_weights
 
 
 def OptLearnerCombinedStaticModArchitecture(param_trainable, init_wrapper, smpl_params, input_info, faces, emb_size=1000):

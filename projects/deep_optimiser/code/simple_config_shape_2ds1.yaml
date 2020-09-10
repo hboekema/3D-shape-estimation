@@ -1,6 +1,6 @@
 GENERAL:
-    GPU_ID: "0"
-    #GPU_ID: "1"
+    #GPU_ID: "0"
+    GPU_ID: "1"
     #GPU_ID: "2"
     #GPU_ID: "3"
     #GPU_ID: "4"
@@ -40,7 +40,10 @@ BASIC:
     #DISTRACTOR: {"other": 0.17}
     #DISTRACTOR: {"other": "pi"}
     #DISTRACTOR: {"param_01": 1.1, "other": 0.1}
-    DISTRACTOR: {"param_01": 0.2, "other": 0.2}
+    #DISTRACTOR: {"param_01": 0.2, "other": 0.2}
+    #DISTRACTOR: {"param_01": 0.2, "other": 0.3}
+    #DISTRACTOR: {"param_01": 0.2, "other": 0.4}
+    #DISTRACTOR: {"param_01": 0.4, "other": 0.3}
     #DISTRACTOR: {"param_01": 1.2, "other": 0.2}
     #DISTRACTOR: {"param_01": 1.3, "other": 0.3}
     #DISTRACTOR: {"param_01": 1.0, "other": 0.3}
@@ -50,6 +53,8 @@ BASIC:
     #DISTRACTOR: {"param_01": "pi", "other": 0.17}
     #DISTRACTOR: {"param_01": "pi", "other": 0.3}
     #DISTRACTOR: {"param_01": "pi", "other": 1.0}
+    #DISTRACTOR: {"param_01": 0.2, "other": 0.2, "shape_other": 1.0}
+    DISTRACTOR: {"param_01": 0.00001, "other": 0.2, "shape_other": 1.0}
     #DISTRACTOR: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.3}
     #DISTRACTOR: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.0}
     #DISTRACTOR: {"param_01": "pi", "trainable": 1.0, "shape_other": 3.0}
@@ -76,7 +81,10 @@ DATA:
     #POSE_OFFSET: {"other": "pi"} 
     #POSE_OFFSET: {"param_01": 1.1, "other": 0.1}
     #POSE_OFFSET: {"param_01": "pi", "other": 0.17}
-    POSE_OFFSET: {"param_01": 0.2, "other": 0.2}
+    #POSE_OFFSET: {"param_01": 0.2, "other": 0.2}
+    #POSE_OFFSET: {"param_01": 0.2, "other": 0.3}
+    #POSE_OFFSET: {"param_01": 0.2, "other": 0.4}
+    #POSE_OFFSET: {"param_01": 0.4, "other": 0.3}
     #POSE_OFFSET: {"param_01": 1.2, "other": 0.2}
     #POSE_OFFSET: {"param_01": 1.3, "other": 0.3}
     #POSE_OFFSET: {"param_01": 1.0, "other": 0.3}
@@ -85,6 +93,8 @@ DATA:
     #POSE_OFFSET: {"param_01": 1.3, "other": 0.5}
     #POSE_OFFSET: {"param_01": 1.5, "other": 0.5}
     #POSE_OFFSET: {"param_01": "pi", "other": 1.0}
+    #POSE_OFFSET: {"param_01": 0.2, "other": 0.2, "shape_other": 1.0}
+    POSE_OFFSET: {"param_01": 0.00001, "other": 0.2, "shape_other": 1.0}
     #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.0}
     #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 0.3}
     #POSE_OFFSET: {"param_01": "pi", "trainable": 1.0, "pose_other": 1.0}
@@ -99,6 +109,8 @@ DATA:
     #PARAMS_TO_OFFSET: "all_pose_and_global_rotation"
     #DIST: "uniform"
     DIST: "gaussian"
+    #INCLUDE_SHAPE: True
+    INCLUDE_SHAPE: False
 
     # Will always result in data being generated instead of loaded
     USE_GENERATOR: True
@@ -113,7 +125,8 @@ DATA:
 
 PARAMS:
     #TRAINABLE: "all_pose"
-    TRAINABLE: "all_pose_and_global_rotation"
+    #TRAINABLE: "all_pose_and_global_rotation"
+    TRAINABLE: "all_pose_and_shape_and_global_rotation"
     #TRAINABLE: "all_pose_and_3D_global_rotation"
     
     # Test conditional kinematic levels (3D)
@@ -237,18 +250,20 @@ MODEL:
     #ARCHITECTURE: "RotConv1DOptLearnerArchitecture"
     #ARCHITECTURE: "ConditionalOptLearnerArchitecture"
     #ARCHITECTURE: "GroupedConv1DOptLearnerArchitecture" 
-    ARCHITECTURE: "GroupedConv2DOptLearnerArchitecture" 
+    #ARCHITECTURE: "GroupedConv2DOptLearnerArchitecture" 
+    ARCHITECTURE: "ShapeConv2DOptLearnerArchitecture" 
     #ARCHITECTURE: "PeriodicOptLearnerArchitecture"
     
     #INPUT_TYPE: "3D_POINTS"
     INPUT_TYPE: "MESH_NORMALS"
     #INPUT_TYPE: "ONLY_NORMALS"
     
-    LEARNING_RATE: 0.05
+    #LEARNING_RATE: 0.1
+    #LEARNING_RATE: 0.05
     #LEARNING_RATE: 0.005
     #LEARNING_RATE: 0.002
     #LEARNING_RATE: 0.001
-    #LEARNING_RATE: 0.0001
+    LEARNING_RATE: 0.0001
     
     #DELTA_D_LOSS_WEIGHT: 50000
     #DELTA_D_LOSS_WEIGHT: 5000
@@ -302,8 +317,8 @@ MODEL:
     OPTIMIZER: "Adam"
     #OPTIMIZER: "SGD"
     
-    DROPOUT: 0.0
-    #DROPOUT: 0.1
+    #DROPOUT: 0.0
+    DROPOUT: 0.1
 
 
 TEST:

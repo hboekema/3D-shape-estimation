@@ -1,6 +1,76 @@
 
 import numpy as np
-from tools.model_helpers import get_trainable_layers
+from tools.model_helpers_v2 import get_trainable_layers
+
+
+
+def learned_optimizer_gradient_updates(optlearner_model, x_test, y_test, param_trainable, cb, logging_cb, num_samples=5, epochs=50, mode="RODRIGUES", lr=1.0, BATCH_SIZE=1):
+    # Prepare for predictions
+    metrics_names = optlearner_model.metrics_names
+    print("metrics_names: " + str(metrics_names))
+    named_scores = {}
+    output_names = [output.op.name.split("/")[0] for output in optlearner_model.outputs]
+    print("output_names: " + str(output_names))
+    pred_index = output_names.index("delta_d_hat")
+
+    logging_cb.set_names(output_names=output_names)
+
+    # Set number of data samples
+    data_samples = x_test[0].shape[0]
+
+    # Get trainable_params
+    trainable_params = sorted([int(param.replace("param_", "")) for param, trainable in param_trainable.items() if trainable])
+
+    # Get trainable layers for this model
+    trainable_layers = get_trainable_layers(optlearner_model, param_trainable)
+    #print(trainable_layers)
+
+    # Set model for callback
+    cb.set_model(optlearner_model)
+
+    for epoch in range(epochs):
+        print("Iteration: " + str(epoch + 1))
+        print("----------------------")
+        cb.on_epoch_begin(epoch=int(epoch), logs=named_scores)
+        #print('emb layer weights'+str(emb_weights))
+	#print('shape '+str(emb_weights[0].shape))
+        test_samples = [arr[:num_samples] for arr in x_test]
+        y_test_samples = [arr[:num_samples] for arr in y_test]
+
+        # Get old optlearner parameters and actual predictions
+        y_pred = optlearner_model.predict(test_samples)
+        delta_d_hat = np.zeros((data_samples, 85))
+        delta_d_hat[:num_samples, trainable_params] = y_pred[pred_index][:, trainable_params]
+        old_params = y_pred[0][:num_samples]
+        gradient_update = np.zeros((data_samples, 85))
+        gradient_update[:num_samples, trainable_params] = y_pred[6][:, trainable_params]
+
+        actual_update = np.divide(gradient_update[:num_samples], old_params, out=np.zeros_like(old_params), where=(old_params != 0))
+        #print(actual_update[0])
+        #print(delta_d_hat[0])
+        assert np.allclose(actual_update, -delta_d_hat[:num_samples], rtol=1e-3)
+
+        # Adjust weights
+        train_history = optlearner_model.fit(test_samples, y_test_samples, batch_size=BATCH_SIZE, epochs=1)
+        y_pred = optlearner_model.predict(test_samples)
+
+        logging_cb.store_results(epoch, test_samples, y_pred)
+
+        # Get new optlearner parameters
+        y_pred = optlearner_model.predict(test_samples)
+        new_params = y_pred[0][:num_samples]
+
+        difference_weights = new_params - old_params
+        diff_comp = difference_weights[0]
+        delta_d_hat_comp = lr*delta_d_hat[0]
+        #print("Prm\tChng\tPred\tDiff")
+        #for param in range(85):
+            #print("{:02d}   {:.05f}   {:.05f}   {:.06f}".format(param, diff_comp[param], delta_d_hat_comp[param], delta_d_hat_comp[param]-diff_comp[param]))
+        #exit(1)
+        #assert np.allclose(lr*delta_d_hat[:num_samples], difference_weights, rtol=1e-3), "predictions do not match"
+
+        cb.on_epoch_end(epoch=int(epoch), logs=named_scores)
+    cb.set_model(optlearner_model)
 
 
 def learned_optimizer(optlearner_model, x_test, param_trainable, cb, num_samples=5, epochs=50, lr=0.5, mode="RODRIGUES", kinematic_levels=None):

@@ -26,7 +26,7 @@ else:
     dirs = ["../"]
 
 dir_paths = dirs
-dirs = [dir_name + "logs/params_mse.txt" for dir_name in dirs]
+dirs = [dir_name + "logs/params_mspe.txt" for dir_name in dirs]
 
 dirs_trainable_params = []
 for dir_name in dir_paths:

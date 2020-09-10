@@ -1,0 +1,25 @@
+
+import numpy as np
+import matplotlib
+from matplotlib import pyplot as plt
+
+
+
+sgd_ROC = np.load("sgd_ROC.npy")
+adam_ROC = np.load("adam_ROC.npy")
+deep_opt_ROC = np.load("deep_opt_ROC.npy")
+
+
+num_bins = sgd_ROC.shape[0]
+plt.plot(num_bins, sgd_ROC, label="SGD", color='r')
+plt.plot(num_bins, adam_ROC, label="Adam", color='g')
+plt.plot(num_bins, deep_opt_ROC, label="Deep opt.", color='b')
+
+plt.xlabel("Angular error (radians)", fontsize=16, fontweight="bold")
+plt.ylabel("Percentage of samples", fontsize=16, fontweight="bold")
+plt.xticks(fontsize=14, fontweight='bold')
+plt.yticks(fontsize=14, fontweight='bold')
+plt.legend(prop={'size': 14, 'weight': 'bold'})
+plt.show()
+
+

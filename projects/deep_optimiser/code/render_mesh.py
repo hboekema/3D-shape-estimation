@@ -1,13 +1,14 @@
 import os
 import numpy as np
 import matplotlib
-#matplotlib.use("TkAgg")
-matplotlib.use("Agg")
+matplotlib.use("TkAgg")
+#matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from copy import copy
 from PIL import Image, ImageOps
 from scipy.ndimage.morphology import binary_closing
 import trimesh
+import cv2
 
 
 class Mesh:
@@ -26,9 +27,9 @@ class Mesh:
         self.verts = []
         self.faces = []
 
-        with open(filepath, 'r') as file:
+        with open(filepath, 'r') as file_:
             # Read the file a line at a time, identifying vertices and faces
-            for line in file:
+            for line in file_:
                 if line[0] == 'v':
                     self.verts.append([float(vi) for vi in line[2:].split(' ')])
                 elif line[0] == 'f':
@@ -111,7 +112,7 @@ class Mesh:
 
         return image
 
-    def render_silhouette(self, dim=(256, 256), morph_mask=None, show=True, title="silhouette"):
+    def render_silhouette(self, dim=(256, 256), morph_mask=None, show=False, title="silhouette"):
         """ Create a(n orthographic) silhouette out of a 2D slice of the pointcloud """
         x_sf = dim[0] - 1
         y_sf = dim[1] - 1
@@ -123,17 +124,19 @@ class Mesh:
         mesh_slice[:, 1] += 1.2
         mesh_slice *= np.mean(dim)/2.2
         coords = np.round(mesh_slice)
-        x_mask = coords[:, 0] <= x_sf
-        y_mask = coords[:, 1] <= y_sf
+        x_mask = np.logical_and(coords[:, 0] <= x_sf, coords[:, 0] >= 0)
+        y_mask = np.logical_and(coords[:, 1] <= y_sf, coords[:, 1] >= 0)
         mask = x_mask * y_mask
         coords = coords[mask]
         coords =  coords.astype("uint8")
 
         # Create background to project silhouette on
         image = np.ones(shape=dim, dtype="uint8")
-        for coord in coords:
-            # Fill in values with a silhouette coordinate on them
-            image[y_sf-coord[1], coord[0]] = 0
+        #for coord in coords:
+        #    # Fill in values with a silhouette coordinate on them
+        #    image[y_sf-coord[1], coord[0]] = 0
+        image[y_sf-coords[:,1], coords[:,0]] = 0
+        #exit(1)
 
         # Finally, perform a morphological closing operation to fill in the silhouette
         if morph_mask is None:
@@ -142,8 +145,75 @@ class Mesh:
                                    [0.34, 1.00, 0.34],
                                    [0.34, 0.34, 0.34]
                                    ])
+
+        iterations = int(np.floor(dim[0]/128))
         image = np.invert(image.astype(bool))
-        image = np.invert(binary_closing(image, structure=morph_mask, iterations=2)).astype(np.uint8)
+
+        if False:
+            #image_x2 = image[::4, ::4]
+            image_x2 = image[::2, ::2]
+            #image_x2 = image
+            image_x2_morphed = np.invert(binary_closing(image_x2, structure=morph_mask, iterations=iterations)).astype(np.uint8)
+            image = cv2.resize(1.0*image_x2_morphed, (dim[0], dim[1]), interpolation=cv2.INTER_NEAREST)
+        else:
+            image = image.astype(np.uint8)
+        image *= 255
+
+        if show:
+            plt.imshow(image, cmap="gray")
+            plt.title(title)
+            plt.show()
+
+        return image
+
+    def render_silhouette_with_closing(self, dim=(256, 256), morph_mask=None, show=False, title="silhouette", closing=True):
+        """ Create a(n orthographic) silhouette out of a 2D slice of the pointcloud """
+        x_sf = dim[0] - 1
+        y_sf = dim[1] - 1
+
+        # Collapse the points onto the x-y plane by dropping the z-coordinate
+        verts = copy(self.verts)
+        mesh_slice = verts[:, :2]
+        mesh_slice[:, 0] += 1
+        mesh_slice[:, 1] += 1.2
+        mesh_slice *= np.mean(dim)/2.2
+        coords = np.round(mesh_slice)
+        x_mask = np.logical_and(coords[:, 0] <= x_sf, coords[:, 0] >= 0)
+        y_mask = np.logical_and(coords[:, 1] <= y_sf, coords[:, 1] >= 0)
+        mask = x_mask * y_mask
+        coords = coords[mask]
+        coords =  coords.astype("uint8")
+
+        # Create background to project silhouette on
+        image = np.ones(shape=dim, dtype="uint8")
+        #for coord in coords:
+        #    # Fill in values with a silhouette coordinate on them
+        #    image[y_sf-coord[1], coord[0]] = 0
+        image[y_sf-coords[:,1], coords[:,0]] = 0
+        #exit(1)
+
+        # Finally, perform a morphological closing operation to fill in the silhouette
+        if morph_mask is None:
+            # Use a circular mask as the default operator
+            morph_mask = np.array([[0.34, 0.34, 0.34],
+                                   [0.34, 1.00, 0.34],
+                                   [0.34, 0.34, 0.34]
+                                   ])
+
+        iterations = int(np.floor(dim[0]/128))
+
+        if closing:
+            image = np.invert(image.astype(bool))
+            #image_x2 = image[::4, ::4]
+            #image_x2 = image[::2, ::2]
+            image_x2 = image
+            image_x2_morphed = np.invert(binary_closing(image_x2, structure=morph_mask, iterations=iterations))
+            #image = np.invert(image_x2_morphed).astype(np.uint8)
+            image = image_x2_morphed.astype(np.uint8)
+            image = cv2.resize(1.0*image, (dim[0], dim[1]), interpolation=cv2.INTER_NEAREST)
+        else:
+            image = image.astype(np.uint8)
+
         image *= 255
 
         if show:
@@ -235,9 +305,10 @@ class Mesh:
         plt.close()
 
 if __name__ == "__main__":
-    mesh_dir = "../example_meshes/"
+    mesh_dir = "/data/cvfs/hjhb2/projects/deep_optimiser/example_meshes/"
     obj_paths = os.listdir(mesh_dir)
     for obj_path in obj_paths:
         mesh = Mesh(os.path.join(mesh_dir, obj_path))
-        mesh.render_silhouette()
-        mesh.render3D()
+        mesh.render_silhouette(dim=[256, 256], show=True)
+        #mesh.render3D()
+
